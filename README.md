@@ -3,7 +3,11 @@
 Top-down semi-trailer parking. Back a 53-foot rig into a bay that has no business fitting it.
 Inspired by the drone footage of truck stops that circulates as "crazy trucker skills".
 
-**Fail early:** any scrape ends the run. So does jackknifing past 83 degrees.
+**Fail early:** any scrape ends the run.
+
+Folding the cab into the trailer stops dead at 83 degrees rather than ending the run. Set
+`JACKKNIFE_ENDS_RUN = true` in `core.js` for the extra-hard version, where hitting that
+limit is a fail.
 
 ## Play
 

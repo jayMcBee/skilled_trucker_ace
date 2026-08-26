@@ -71,7 +71,7 @@
 		</div>
 	</div>
 	<div id="controls-hint">
-		<strong>Drive:</strong> W / S or Up / Down &nbsp;|&nbsp; <strong>Steer:</strong> A / D or Left / Right &nbsp;|&nbsp; <strong>R:</strong> Restart<br>The wheel holds its angle. Steer back to straighten — it stops dead on centre.
+		<strong>Drive:</strong> W / S or Up / Down &nbsp;|&nbsp; <strong>Steer:</strong> A / D or Left / Right &nbsp;|&nbsp; <strong>R:</strong> Restart<br>The wheel holds its angle. Steer back to straighten — it stops dead on centre.<br>Fold the rig too far and it jams at the stop; back out of it and carry on.
 	</div>
 
 <script src="core.js"></script>
@@ -120,7 +120,7 @@
 		if (dir !== 0 && lastDir !== 0 && dir !== lastDir) { shifts++; gearShiftsEl.innerText = shifts; }
 		if (dir !== 0) lastDir = dir;
 
-		if (Math.abs(articulation) > MAX_ARTICULATION)
+		if (JACKKNIFE_ENDS_RUN && Math.abs(articulation) > MAX_ARTICULATION)
 			return gameOver('Jackknifed!', 'The cab folded into the trailer nose. Ease off the wheel before the angle runs away.', '#f43f5e');
 
 		var boxes = rigBoxes(rig);

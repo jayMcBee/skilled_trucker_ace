@@ -49,7 +49,8 @@ function intersects(a, b) {
 //     d(trailerAngle) = (v / kingpinToAxle) * sin(cabAngle - trailerAngle)
 // Forward that converges (the trailer tracks). Reverse it diverges — which is the game.
 
-var MAX_ARTICULATION = 1.45; // ~83 degrees, then the cab is into the trailer nose
+var MAX_ARTICULATION = 1.45;        // ~83 degrees, then the cab is into the trailer nose
+var JACKKNIFE_ENDS_RUN = false;     // ponytail: one flag, not a mode system. Extra-hard flips it.
 
 function makeRig(x, y, angle) {
 	var r = {
@@ -88,9 +89,15 @@ function stepRig(r, drive, steerInput) {
 
 	var t = r.trailer;
 	t.angle = normAngle(t.angle + (r.speed / t.kingpinToAxle) * Math.sin(r.angle - t.angle));
+
+	// The fold always stops dead at the physical limit, so the cab can never pass through the
+	// trailer. Whether reaching it also ends the run is the caller's call. The raw articulation
+	// is returned unclamped so the caller can still tell the limit was hit.
+	var art = normAngle(r.angle - t.angle);
+	if (Math.abs(art) > MAX_ARTICULATION) t.angle = normAngle(r.angle - (art < 0 ? -MAX_ARTICULATION : MAX_ARTICULATION));
 	syncTrailer(r);
 
-	return normAngle(r.angle - t.angle);
+	return art;
 }
 
 function rigBoxes(r) {
@@ -207,6 +214,16 @@ if (typeof window === 'undefined') {
 	assert.ok(finite(n) && finite(n.trailer), 'rig must be finite at init');
 	for (i = 0; i < 600; i++) stepRig(n, i % 120 < 60 ? 1 : -1, Math.sin(i / 40) > 0 ? 1 : -1);
 	assert.ok(finite(n) && finite(n.trailer), 'rig must stay finite');
+
+	// Folding hard pins at the limit rather than passing the cab through the trailer, and the
+	// raw articulation still reports the overshoot so extra-hard mode can fail on it.
+	var j = makeRig(0, 0, 0), sawOvershoot = false;
+	for (i = 0; i < 400; i++) {
+		if (Math.abs(stepRig(j, -1, 1)) > MAX_ARTICULATION) sawOvershoot = true;
+		assert.ok(Math.abs(normAngle(j.angle - j.trailer.angle)) <= MAX_ARTICULATION + 1e-9,
+			'fold must stay inside the limit, frame ' + i);
+	}
+	assert.ok(sawOvershoot, 'stepRig must report articulation past the limit');
 
 	// The lot must not park trucks inside each other, and the player must not start in one.
 	var lot = buildLot(LEVEL);
