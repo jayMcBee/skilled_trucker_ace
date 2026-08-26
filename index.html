@@ -101,7 +101,6 @@
 
 		var drive = keys.up ? 1 : (keys.down ? -1 : 0);
 		var steer = keys.left ? -1 : (keys.right ? 1 : 0);
-		var before = rig.speed;
 		var articulation = stepRig(rig, drive, steer);
 
 		// Count a shift only when the rig actually reverses direction, not on key press.
@@ -263,8 +262,8 @@
 		ctx.fill();
 	}
 
-	(function loop() { update(); draw(); requestAnimationFrame(loop); })();
 	initGame();
+	(function loop() { update(); draw(); requestAnimationFrame(loop); })();
 </script>
 </body>
 </html>

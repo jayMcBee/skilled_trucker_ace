@@ -20,7 +20,8 @@ Open `index.html`. No build step, no dependencies.
 
 ## Check
 
-    node core.js
+    node core.js    # rig math, collision, level geometry
+    node smoke.js   # the page itself, against a stub canvas
 
 Asserts the separating-axis tests, that the trailer converges going forward and diverges in
 reverse, that 600 steps stay NaN-free, and that the level parks no truck inside another.
