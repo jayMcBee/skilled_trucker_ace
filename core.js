@@ -55,8 +55,11 @@ var JACKKNIFE_ENDS_RUN = false;     // ponytail: one flag, not a mode system. Ex
 function makeRig(x, y, angle) {
 	var r = {
 		x: x, y: y, angle: angle, speed: 0, steer: 0,
-		wheelbase: 34, maxSpeed: 1.8, reverseFactor: 0.55,
-		accel: 0.04, friction: 0.035, maxSteer: 0.65, steerRate: 0.045,
+		// Per SECOND, not per frame, so 60Hz feel is unchanged and every other refresh rate is
+		// now correct rather than proportionally faster. Speeds and rates convert x60,
+		// accelerations x60^2 since they are distance per time SQUARED.
+		wheelbase: 34, maxSpeed: 108, reverseFactor: 0.55,
+		accel: 144, friction: 126, maxSteer: 0.65, steerRate: 2.7,
 		trailer: { x: 0, y: 0, angle: angle, len: TRUCK.trailerLen, wid: TRUCK.trailerWid, kingpinToAxle: 118 }
 	};
 	syncTrailer(r);
@@ -69,26 +72,28 @@ function syncTrailer(r) {
 	r.trailer.y = r.y - Math.sin(r.trailer.angle) * (r.trailer.len / 2);
 }
 
-function stepRig(r, drive, steerInput) {
+function stepRig(r, drive, steerInput, dt) {
+	if (!(dt > 0)) throw new Error('stepRig needs a timestep in seconds, got ' + dt);
 	// The wheel is a position, not a nudge: it holds wherever you leave it, at any speed, and
 	// you cancel a turn by steering back. Nothing springs to centre on its own.
 	if (steerInput) {
-		r.steer = clamp(r.steer + steerInput * r.steerRate, -r.maxSteer, r.maxSteer);
+		r.steer = clamp(r.steer + steerInput * r.steerRate * dt, -r.maxSteer, r.maxSteer);
 		// Detent, so centre is findable by feel: land within half a step of zero and you get
 		// exactly zero. It costs one frame passing through, it never blocks steering past it.
-		if (Math.abs(r.steer) < r.steerRate * 0.5) r.steer = 0;
+		if (Math.abs(r.steer) < r.steerRate * dt * 0.5) r.steer = 0;
 	}
 
-	if (drive > 0) r.speed = Math.min(r.speed + r.accel, r.maxSpeed);
-	else if (drive < 0) r.speed = Math.max(r.speed - r.accel, -r.maxSpeed * r.reverseFactor);
-	else r.speed = towardZero(r.speed, r.friction);
+	if (drive > 0) r.speed = Math.min(r.speed + r.accel * dt, r.maxSpeed);
+	else if (drive < 0) r.speed = Math.max(r.speed - r.accel * dt, -r.maxSpeed * r.reverseFactor);
+	else r.speed = towardZero(r.speed, r.friction * dt);
 
-	r.angle = normAngle(r.angle + (r.speed / r.wheelbase) * Math.tan(r.steer));
-	r.x += Math.cos(r.angle) * r.speed;
-	r.y += Math.sin(r.angle) * r.speed;
+	var travel = r.speed * dt;
+	r.angle = normAngle(r.angle + (travel / r.wheelbase) * Math.tan(r.steer));
+	r.x += Math.cos(r.angle) * travel;
+	r.y += Math.sin(r.angle) * travel;
 
 	var t = r.trailer;
-	t.angle = normAngle(t.angle + (r.speed / t.kingpinToAxle) * Math.sin(r.angle - t.angle));
+	t.angle = normAngle(t.angle + (travel / t.kingpinToAxle) * Math.sin(r.angle - t.angle));
 
 	// The fold always stops dead at the physical limit, so the cab can never pass through the
 	// trailer. Whether reaching it also ends the run is the caller's call. The raw articulation
@@ -159,6 +164,7 @@ function lotObstacles(lot) {
 // --- self-check: `node core.js` -------------------------------------------
 if (typeof window === 'undefined') {
 	var assert = require('assert');
+	var DT = 1 / 60;
 	var finite = function (o) { return Object.keys(o).every(function (k) { return typeof o[k] !== 'number' || Number.isFinite(o[k]); }); };
 
 	// SAT sanity, including the NaN case that used to hide the broken trailer.
@@ -175,55 +181,64 @@ if (typeof window === 'undefined') {
 	// Forward is stable: an articulated rig straightens itself out.
 	var r = makeRig(400, 300, 0);
 	r.trailer.angle = 0.3;
-	for (var i = 0; i < 400; i++) stepRig(r, 1, 0);
+	for (var i = 0; i < 400; i++) stepRig(r, 1, 0, DT);
 	assert.ok(Math.abs(normAngle(r.angle - r.trailer.angle)) < 0.05, 'forward must converge, got ' + normAngle(r.angle - r.trailer.angle));
 
 	// Reverse is unstable: the whole point of the game.
 	var b = makeRig(400, 300, 0);
 	b.trailer.angle = 0.05;
 	var art0 = Math.abs(normAngle(b.angle - b.trailer.angle));
-	for (i = 0; i < 200; i++) stepRig(b, -1, 0);
+	for (i = 0; i < 200; i++) stepRig(b, -1, 0, DT);
 	assert.ok(Math.abs(normAngle(b.angle - b.trailer.angle)) > art0 * 3, 'reverse must diverge');
 
 	// Dry steering: the wheel holds its angle at a standstill, and a stopped rig never rotates.
 	var s = makeRig(0, 0, 0);
-	for (i = 0; i < 10; i++) stepRig(s, 0, 1);
+	for (i = 0; i < 10; i++) stepRig(s, 0, 1, DT);
 	var held = s.steer;
 	assert.ok(held > 0.3, 'wheel must turn while stopped');
-	for (i = 0; i < 30; i++) stepRig(s, 0, 0);
+	for (i = 0; i < 30; i++) stepRig(s, 0, 0, DT);
 	assert.strictEqual(s.steer, held, 'wheel must hold its angle at a standstill');
 	assert.strictEqual(s.angle, 0, 'a stopped rig must not rotate');
 
 	// Rolling, it holds too: a set wheel keeps the rig turning until you steer back.
 	var m = makeRig(0, 0, 0);
-	for (i = 0; i < 30; i++) stepRig(m, 1, 1);
+	for (i = 0; i < 30; i++) stepRig(m, 1, 1, DT);
 	var atSpeed = m.steer, heading = m.angle;
-	for (i = 0; i < 60; i++) stepRig(m, 1, 0);
+	for (i = 0; i < 60; i++) stepRig(m, 1, 0, DT);
 	assert.strictEqual(m.steer, atSpeed, 'wheel must hold its angle while rolling');
 	assert.ok(Math.abs(normAngle(m.angle - heading)) > 0.5, 'a held wheel must keep the rig turning');
 
 	// Steering back reaches exactly centre rather than hunting around it, and passing
 	// through the detent does not trap the wheel there.
-	for (i = 0; i < 20 && m.steer !== 0; i++) stepRig(m, 1, -1);
+	for (i = 0; i < 20 && m.steer !== 0; i++) stepRig(m, 1, -1, DT);
 	assert.strictEqual(m.steer, 0, 'steering back must land on exact centre');
-	stepRig(m, 1, -1);
+	stepRig(m, 1, -1, DT);
 	assert.ok(m.steer < 0, 'the centre detent must not block steering past it');
 
 	// No NaN anywhere (the old build produced a NaN trailer on frame 1 and never recovered).
 	var n = makeRig(LEVEL.start.x, LEVEL.start.y, LEVEL.start.angle);
 	assert.ok(finite(n) && finite(n.trailer), 'rig must be finite at init');
-	for (i = 0; i < 600; i++) stepRig(n, i % 120 < 60 ? 1 : -1, Math.sin(i / 40) > 0 ? 1 : -1);
+	for (i = 0; i < 600; i++) stepRig(n, i % 120 < 60 ? 1 : -1, Math.sin(i / 40) > 0 ? 1 : -1, DT);
 	assert.ok(finite(n) && finite(n.trailer), 'rig must stay finite');
 
 	// Folding hard pins at the limit rather than passing the cab through the trailer, and the
 	// raw articulation still reports the overshoot so extra-hard mode can fail on it.
 	var j = makeRig(0, 0, 0), sawOvershoot = false;
 	for (i = 0; i < 400; i++) {
-		if (Math.abs(stepRig(j, -1, 1)) > MAX_ARTICULATION) sawOvershoot = true;
+		if (Math.abs(stepRig(j, -1, 1, DT)) > MAX_ARTICULATION) sawOvershoot = true;
 		assert.ok(Math.abs(normAngle(j.angle - j.trailer.angle)) <= MAX_ARTICULATION + 1e-9,
 			'fold must stay inside the limit, frame ' + i);
 	}
 	assert.ok(sawOvershoot, 'stepRig must report articulation past the limit');
+
+	// Frame-rate independence: the same second of driving must land in the same place whether
+	// it is simulated at 60Hz or 144Hz. This is the whole point of the dt refactor.
+	var slow = makeRig(0, 0, 0), fast = makeRig(0, 0, 0);
+	for (i = 0; i < 60; i++) stepRig(slow, 1, 1, 1 / 60);
+	for (i = 0; i < 144; i++) stepRig(fast, 1, 1, 1 / 144);
+	assert.ok(Math.hypot(slow.x - fast.x, slow.y - fast.y) < 2,
+		'60Hz and 144Hz must agree within 2px, got ' + Math.hypot(slow.x - fast.x, slow.y - fast.y).toFixed(2));
+	assert.ok(Math.abs(normAngle(slow.angle - fast.angle)) < 0.03, 'headings must agree across refresh rates');
 
 	// The lot must not park trucks inside each other, and the player must not start in one.
 	var lot = buildLot(LEVEL);

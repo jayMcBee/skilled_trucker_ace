@@ -38,7 +38,7 @@ for (var i = 0; i < 900; i++) {
 	var p = pressed[Math.floor(i / 150) % pressed.length];
 	sandbox.keys.up = !!p.up; sandbox.keys.down = !!p.down;
 	sandbox.keys.left = !!p.left; sandbox.keys.right = !!p.right;
-	sandbox.update();
+	sandbox.update(1 / 60);
 	sandbox.draw();
 	assert.ok(Number.isFinite(sandbox.rig.x) && Number.isFinite(sandbox.rig.trailer.angle), 'rig went non-finite on frame ' + i);
 	if (sandbox.isGameOver) sandbox.initGame();

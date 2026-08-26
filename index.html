@@ -108,12 +108,12 @@
 		modal.classList.remove('active');
 	}
 
-	function update() {
+	function update(dt) {
 		if (isGameOver) return;
 
 		var drive = keys.up ? 1 : (keys.down ? -1 : 0);
 		var steer = keys.left ? -1 : (keys.right ? 1 : 0);
-		var articulation = stepRig(rig, drive, steer);
+		var articulation = stepRig(rig, drive, steer, dt);
 
 		// Count a shift only when the rig actually reverses direction, not on key press.
 		var dir = rig.speed > 0.01 ? 1 : (rig.speed < -0.01 ? -1 : 0);
@@ -279,7 +279,17 @@
 	}
 
 	initGame();
-	(function loop() { update(); draw(); requestAnimationFrame(loop); })();
+
+	// Real elapsed time, capped so a backgrounded tab does not resume with one enormous step
+	// that tunnels the rig straight through a parked truck.
+	var lastFrame = null;
+	requestAnimationFrame(function loop(now) {
+		var dt = lastFrame === null ? 1 / 60 : Math.min((now - lastFrame) / 1000, 1 / 30);
+		lastFrame = now;
+		update(dt);
+		draw();
+		requestAnimationFrame(loop);
+	});
 </script>
 </body>
 </html>
