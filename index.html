@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skilled Trucker Ace</title>
+<style>
+	* { box-sizing: border-box; margin: 0; padding: 0; }
+	body {
+		background: #080a0f; color: #d1d5db;
+		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+		display: flex; flex-direction: column; align-items: center; justify-content: center;
+		min-height: 100vh; overflow: hidden; user-select: none;
+	}
+	#game-container {
+		position: relative; border-radius: 6px; overflow: hidden; border: 1px solid #1f293d;
+		box-shadow: 0 20px 50px rgba(0,0,0,.9), 0 0 40px rgba(0,0,0,.8);
+	}
+	canvas { background: #0f131d; display: block; }
+	#ui-overlay {
+		position: absolute; top: 15px; left: 20px; right: 20px;
+		display: flex; justify-content: space-between; pointer-events: none;
+		font-size: 14px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+	}
+	.stat-box {
+		background: rgba(10,14,23,.85); padding: 8px 16px; border-radius: 4px;
+		border: 1px solid rgba(255,255,255,.1); backdrop-filter: blur(4px);
+		box-shadow: 0 4px 10px rgba(0,0,0,.5);
+	}
+	#controls-hint { margin-top: 12px; color: #6b7280; font-size: 13px; text-align: center; }
+	#controls-hint strong { color: #9ca3af; }
+	#modal {
+		position: absolute; inset: 0; background: rgba(5,7,12,.9);
+		display: flex; flex-direction: column; align-items: center; justify-content: center;
+		opacity: 0; pointer-events: none; transition: opacity .25s ease;
+	}
+	#modal.active { opacity: 1; pointer-events: auto; }
+	#modal h1 { font-size: 28px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+	#modal p { font-size: 15px; margin-bottom: 20px; color: #9ca3af; }
+	button {
+		background: #e11d48; color: #fff; border: none; padding: 10px 24px;
+		font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;
+		text-transform: uppercase; letter-spacing: 1px; transition: background .2s, transform .1s;
+	}
+	button:hover { background: #f43f5e; transform: translateY(-1px); }
+	button:active { transform: translateY(1px); }
+</style>
+</head>
+<body>
+	<div id="game-container">
+		<canvas id="canvas" width="850" height="650"></canvas>
+		<div id="ui-overlay">
+			<div class="stat-box">Shifts: <span id="gear-shifts" style="color:#f43f5e">0</span></div>
+			<div class="stat-box">Spot Alignment: <span id="alignment-pct" style="color:#38bdf8">0%</span></div>
+		</div>
+		<div id="modal">
+			<h1 id="modal-title">Spot Secured</h1>
+			<p id="modal-desc">Clean maneuvering.</p>
+			<button id="restart-btn">Try Again</button>
+		</div>
+	</div>
+	<div id="controls-hint">
+		<strong>Drive:</strong> W / S or Up / Down &nbsp;|&nbsp; <strong>Steer:</strong> A / D or Left / Right &nbsp;|&nbsp; <strong>R:</strong> Restart
+	</div>
+
+<script src="core.js"></script>
+<script>
+	var canvas = document.getElementById('canvas');
+	var ctx = canvas.getContext('2d');
+	var gearShiftsEl = document.getElementById('gear-shifts');
+	var alignmentEl = document.getElementById('alignment-pct');
+	var modal = document.getElementById('modal');
+	var modalTitle = document.getElementById('modal-title');
+	var modalDesc = document.getElementById('modal-desc');
+
+	var keys = { up: false, down: false, left: false, right: false };
+	var KEYMAP = {
+		ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down',
+		ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right'
+	};
+	window.addEventListener('keydown', function (e) {
+		if (e.key === 'r' || e.key === 'R') return initGame();
+		if (KEYMAP[e.key]) { keys[KEYMAP[e.key]] = true; e.preventDefault(); }
+	});
+	window.addEventListener('keyup', function (e) { if (KEYMAP[e.key]) keys[KEYMAP[e.key]] = false; });
+	document.getElementById('restart-btn').addEventListener('click', initGame);
+
+	var rig, lot, obstacleBoxes, shifts, lastDir, isGameOver;
+
+	function initGame() {
+		lot = buildLot(LEVEL);
+		obstacleBoxes = lotObstacles(lot);
+		rig = makeRig(LEVEL.start.x, LEVEL.start.y, LEVEL.start.angle);
+		shifts = 0; lastDir = 0; isGameOver = false;
+		gearShiftsEl.innerText = '0';
+		modal.classList.remove('active');
+	}
+
+	function update() {
+		if (isGameOver) return;
+
+		var drive = keys.up ? 1 : (keys.down ? -1 : 0);
+		var steer = keys.left ? -1 : (keys.right ? 1 : 0);
+		var before = rig.speed;
+		var articulation = stepRig(rig, drive, steer);
+
+		// Count a shift only when the rig actually reverses direction, not on key press.
+		var dir = rig.speed > 0.01 ? 1 : (rig.speed < -0.01 ? -1 : 0);
+		if (dir !== 0 && lastDir !== 0 && dir !== lastDir) { shifts++; gearShiftsEl.innerText = shifts; }
+		if (dir !== 0) lastDir = dir;
+
+		if (Math.abs(articulation) > MAX_ARTICULATION)
+			return gameOver('Jackknifed!', 'The cab folded into the trailer nose. Ease off the wheel before the angle runs away.', '#f43f5e');
+
+		var boxes = rigBoxes(rig);
+		for (var i = 0; i < obstacleBoxes.length; i++)
+			if (intersects(boxes[0], obstacleBoxes[i]) || intersects(boxes[1], obstacleBoxes[i]))
+				return gameOver('Collision!', 'In a yard this tight, micro-adjustments are everything.', '#f43f5e');
+
+		checkParked();
+	}
+
+	function checkParked() {
+		var dist = Math.hypot(rig.trailer.x - lot.bay.trailerX, rig.trailer.y - lot.bay.trailerY);
+		var angleDiff = Math.abs(normAngle(rig.trailer.angle - lot.bay.angle));
+
+		var distScore = Math.max(0, 1 - dist / 180);
+		var angleScore = Math.max(0, 1 - angleDiff / (Math.PI / 4));
+		alignmentEl.innerText = Math.round((distScore * 0.5 + angleScore * 0.5) * 100) + '%';
+
+		if (dist < 15 && angleDiff < 0.12 && Math.abs(rig.speed) < 0.15)
+			gameOver('Perfectly Parked!', 'You fitted the rig in with ' + shifts + ' direction shifts.', '#38bdf8');
+	}
+
+	function gameOver(title, desc, color) {
+		isGameOver = true;
+		modalTitle.innerText = title;
+		modalTitle.style.color = color;
+		modalDesc.innerText = desc;
+		modal.classList.add('active');
+	}
+
+	// --- render ------------------------------------------------------------
+
+	function draw() {
+		ctx.fillStyle = '#0f131d';
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+		ctx.fillStyle = 'rgba(255,255,255,.015)';
+		[[300, 300, 200, 100, Math.PI / 6], [550, 450, 250, 80, -Math.PI / 8]].forEach(function (p) {
+			ctx.beginPath(); ctx.ellipse(p[0], p[1], p[2], p[3], p[4], 0, Math.PI * 2); ctx.fill();
+		});
+
+		drawBay();
+
+		var colors = ['#f8fafc', '#e2e8f0', '#cbd5e1', '#f1f5f9'];
+		var cabColors = ['#dc2626', '#3b82f6', '#f59e0b', '#10b981', '#6366f1', '#e2e8f0'];
+		lot.parked.forEach(function (p, i) {
+			drawParkedRig(p.x, p.y, p.angle, colors[i % colors.length], cabColors[i % cabColors.length]);
+		});
+
+		ctx.fillStyle = '#1e293b';
+		lot.walls.forEach(function (w) { ctx.fillRect(w.x, w.y, w.w, w.h); });
+
+		drawTrailer(rig.trailer.x, rig.trailer.y, rig.trailer.len, rig.trailer.wid, rig.trailer.angle, '#f8fafc', true);
+		drawCab(rig.x + Math.cos(rig.angle) * 8, rig.y + Math.sin(rig.angle) * 8, rig.angle, rig.steer);
+
+		glow(150, 100, 180, 'rgba(251,191,36,.08)');
+		glow(650, 100, 180, 'rgba(251,191,36,.08)');
+		glow(400, 550, 220, 'rgba(251,191,36,.06)');
+	}
+
+	function drawBay() {
+		ctx.save();
+		ctx.translate(lot.bay.x, lot.bay.y);
+		ctx.rotate(lot.bay.angle);
+		ctx.strokeStyle = '#eab308';
+		ctx.lineWidth = 3;
+		ctx.beginPath();
+		ctx.moveTo(-105, -31); ctx.lineTo(105, -31);
+		ctx.moveTo(-105, 31); ctx.lineTo(105, 31);
+		ctx.moveTo(-105, -31); ctx.lineTo(-105, 31);
+		ctx.stroke();
+		ctx.fillStyle = 'rgba(234,179,8,.25)';
+		ctx.font = '900 11px monospace';
+		ctx.textAlign = 'center';
+		ctx.fillText('RESERVED', 0, 4);
+		ctx.restore();
+	}
+
+	function drawTrailer(x, y, len, wid, angle, color, isPlayer) {
+		ctx.save();
+		ctx.translate(x, y);
+		ctx.rotate(angle);
+		ctx.fillStyle = 'rgba(0,0,0,.6)';
+		ctx.fillRect(-len / 2 + 6, -wid / 2 + 6, len, wid);
+		ctx.fillStyle = color;
+		ctx.fillRect(-len / 2, -wid / 2, len, wid);
+		ctx.fillStyle = 'rgba(0,0,0,.1)';
+		for (var i = -len / 2 + 10; i < len / 2 - 10; i += 12) ctx.fillRect(i, -wid / 2 + 3, 2, wid - 6);
+		ctx.fillStyle = '#ef4444';
+		ctx.shadowColor = '#ef4444';
+		ctx.shadowBlur = isPlayer ? 10 : 4;
+		ctx.fillRect(-len / 2, -wid / 2 + 2, 2, 8);
+		ctx.fillRect(-len / 2, wid / 2 - 10, 2, 8);
+		ctx.shadowBlur = 0;
+		ctx.restore();
+	}
+
+	// A parked rig is one 200-long box: trailer across the rear 155, cab on the nose.
+	function drawParkedRig(x, y, angle, trailerColor, cabColor) {
+		var fx = Math.cos(angle), fy = Math.sin(angle);
+		drawTrailer(x - fx * 22.5, y - fy * 22.5, TRUCK.trailerLen, TRUCK.trailerWid, angle, trailerColor, false);
+		ctx.save();
+		ctx.translate(x + fx * 78, y + fy * 78);
+		ctx.rotate(angle);
+		ctx.fillStyle = 'rgba(0,0,0,.6)';
+		ctx.fillRect(-16, -13, 44, 38);
+		ctx.fillStyle = cabColor;
+		ctx.fillRect(-22, -19, 44, 38);
+		ctx.fillStyle = '#020617';
+		ctx.fillRect(8, -16, 8, 32);
+		ctx.restore();
+	}
+
+	function drawCab(x, y, angle, steer) {
+		ctx.save();
+		ctx.translate(x, y);
+		ctx.rotate(angle);
+
+		ctx.fillStyle = 'rgba(254,240,138,.12)';
+		ctx.beginPath();
+		ctx.moveTo(22, -15); ctx.lineTo(162, -49); ctx.lineTo(162, 49); ctx.lineTo(22, 15);
+		ctx.closePath();
+		ctx.fill();
+
+		ctx.fillStyle = '#0f172a';
+		[-1, 1].forEach(function (side) {
+			ctx.save();
+			ctx.translate(14, side * 18);
+			ctx.rotate(steer);
+			ctx.fillRect(-5, -2.5, 10, 5);
+			ctx.restore();
+			ctx.fillRect(-16, side * 18 - 2.5, 10, 5);
+		});
+
+		ctx.fillStyle = 'rgba(0,0,0,.6)';
+		ctx.fillRect(-16, -13, 44, 38);
+		ctx.fillStyle = '#dc2626';
+		ctx.fillRect(-22, -19, 44, 38);
+		ctx.fillStyle = '#020617';
+		ctx.fillRect(8, -16, 8, 32);
+		ctx.restore();
+	}
+
+	function glow(x, y, radius, color) {
+		var g = ctx.createRadialGradient(x, y, 0, x, y, radius);
+		g.addColorStop(0, color);
+		g.addColorStop(1, 'transparent');
+		ctx.fillStyle = g;
+		ctx.beginPath();
+		ctx.arc(x, y, radius, 0, Math.PI * 2);
+		ctx.fill();
+	}
+
+	(function loop() { update(); draw(); requestAnimationFrame(loop); })();
+	initGame();
+</script>
+</body>
+</html>

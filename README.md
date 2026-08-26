@@ -1,0 +1,37 @@
+# Skilled Trucker Ace
+
+Top-down semi-trailer parking. Back a 53-foot rig into a bay that has no business fitting it.
+Inspired by the drone footage of truck stops that circulates as "crazy trucker skills".
+
+**Fail early:** any scrape ends the run. So does jackknifing past 83 degrees.
+
+## Play
+
+Open `index.html`. No build step, no dependencies.
+
+- **Drive** — `W`/`S` or `Up`/`Down`
+- **Steer** — `A`/`D` or `Left`/`Right`
+- **Restart** — `R`
+
+## Layout
+
+- `index.html` — rendering, input, game state
+- `core.js` — rig kinematics, collision, level data. Shared by the page and the self-check.
+
+## Check
+
+    node core.js
+
+Asserts the separating-axis tests, that the trailer converges going forward and diverges in
+reverse, that 600 steps stay NaN-free, and that the level parks no truck inside another.
+
+## Physics
+
+Tractor is a rear-axle bicycle model. The fifth wheel sits over the drive axle, so the hitch is
+the tracked point and the trailer equation is exact:
+
+    trailerAngle += (v / kingpinToAxle) * sin(cabAngle - trailerAngle)
+
+Forward that converges — the trailer tracks. Reverse it diverges. That instability is the game.
+
+One convention throughout: local `+x` is forward, and `angle` is the direction the nose points.
