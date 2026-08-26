@@ -69,10 +69,14 @@ function syncTrailer(r) {
 }
 
 function stepRig(r, drive, steerInput) {
-	// Caster self-aligning torque scales with speed, so a stopped rig holds its wheel where
-	// you left it. That is what lets you set the angle before shifting into reverse.
-	if (steerInput) r.steer = clamp(r.steer + steerInput * r.steerRate, -r.maxSteer, r.maxSteer);
-	else r.steer = towardZero(r.steer, r.steerRate * 1.5 * Math.min(1, Math.abs(r.speed) / r.maxSpeed));
+	// The wheel is a position, not a nudge: it holds wherever you leave it, at any speed, and
+	// you cancel a turn by steering back. Nothing springs to centre on its own.
+	if (steerInput) {
+		r.steer = clamp(r.steer + steerInput * r.steerRate, -r.maxSteer, r.maxSteer);
+		// Detent, so centre is findable by feel: land within half a step of zero and you get
+		// exactly zero. It costs one frame passing through, it never blocks steering past it.
+		if (Math.abs(r.steer) < r.steerRate * 0.5) r.steer = 0;
+	}
 
 	if (drive > 0) r.speed = Math.min(r.speed + r.accel, r.maxSpeed);
 	else if (drive < 0) r.speed = Math.max(r.speed - r.accel, -r.maxSpeed * r.reverseFactor);
@@ -183,12 +187,20 @@ if (typeof window === 'undefined') {
 	assert.strictEqual(s.steer, held, 'wheel must hold its angle at a standstill');
 	assert.strictEqual(s.angle, 0, 'a stopped rig must not rotate');
 
-	// Rolling, it still self-centres when you let go.
+	// Rolling, it holds too: a set wheel keeps the rig turning until you steer back.
 	var m = makeRig(0, 0, 0);
 	for (i = 0; i < 30; i++) stepRig(m, 1, 1);
-	var atSpeed = Math.abs(m.steer);
-	for (i = 0; i < 80; i++) stepRig(m, 1, 0);
-	assert.ok(Math.abs(m.steer) < atSpeed * 0.2, 'wheel must self-centre while rolling');
+	var atSpeed = m.steer, heading = m.angle;
+	for (i = 0; i < 60; i++) stepRig(m, 1, 0);
+	assert.strictEqual(m.steer, atSpeed, 'wheel must hold its angle while rolling');
+	assert.ok(Math.abs(normAngle(m.angle - heading)) > 0.5, 'a held wheel must keep the rig turning');
+
+	// Steering back reaches exactly centre rather than hunting around it, and passing
+	// through the detent does not trap the wheel there.
+	for (i = 0; i < 20 && m.steer !== 0; i++) stepRig(m, 1, -1);
+	assert.strictEqual(m.steer, 0, 'steering back must land on exact centre');
+	stepRig(m, 1, -1);
+	assert.ok(m.steer < 0, 'the centre detent must not block steering past it');
 
 	// No NaN anywhere (the old build produced a NaN trailer on frame 1 and never recovered).
 	var n = makeRig(LEVEL.start.x, LEVEL.start.y, LEVEL.start.angle);
