@@ -27,6 +27,16 @@
 		border: 1px solid rgba(255,255,255,.1); backdrop-filter: blur(4px);
 		box-shadow: 0 4px 10px rgba(0,0,0,.5);
 	}
+	.wheel-track {
+		display: inline-block; position: relative; vertical-align: middle;
+		width: 64px; height: 6px; margin-left: 8px;
+		background: rgba(255,255,255,.12); border-radius: 3px;
+	}
+	.wheel-track::before {
+		content: ''; position: absolute; left: 50%; top: -3px;
+		width: 1px; height: 12px; background: rgba(255,255,255,.35);
+	}
+	#wheel-fill { position: absolute; top: 0; height: 6px; background: #38bdf8; border-radius: 3px; }
 	#controls-hint { margin-top: 12px; color: #6b7280; font-size: 13px; text-align: center; }
 	#controls-hint strong { color: #9ca3af; }
 	#modal {
@@ -51,6 +61,7 @@
 		<canvas id="canvas" width="850" height="650"></canvas>
 		<div id="ui-overlay">
 			<div class="stat-box">Shifts: <span id="gear-shifts" style="color:#f43f5e">0</span></div>
+			<div class="stat-box">Wheel<span class="wheel-track"><i id="wheel-fill"></i></span></div>
 			<div class="stat-box">Spot Alignment: <span id="alignment-pct" style="color:#38bdf8">0%</span></div>
 		</div>
 		<div id="modal">
@@ -60,7 +71,7 @@
 		</div>
 	</div>
 	<div id="controls-hint">
-		<strong>Drive:</strong> W / S or Up / Down &nbsp;|&nbsp; <strong>Steer:</strong> A / D or Left / Right &nbsp;|&nbsp; <strong>R:</strong> Restart
+		<strong>Drive:</strong> W / S or Up / Down &nbsp;|&nbsp; <strong>Steer:</strong> A / D or Left / Right &nbsp;|&nbsp; <strong>R:</strong> Restart<br>The wheel holds its angle when you are stopped — set it before you shift.
 	</div>
 
 <script src="core.js"></script>
@@ -72,6 +83,7 @@
 	var modal = document.getElementById('modal');
 	var modalTitle = document.getElementById('modal-title');
 	var modalDesc = document.getElementById('modal-desc');
+	var wheelFill = document.getElementById('wheel-fill');
 
 	var keys = { up: false, down: false, left: false, right: false };
 	var KEYMAP = {
@@ -163,6 +175,10 @@
 
 		drawTrailer(rig.trailer.x, rig.trailer.y, rig.trailer.len, rig.trailer.wid, rig.trailer.angle, '#f8fafc', true);
 		drawCab(rig.x + Math.cos(rig.angle) * 8, rig.y + Math.sin(rig.angle) * 8, rig.angle, rig.steer);
+
+		var f = rig.steer / rig.maxSteer;
+		wheelFill.style.left = (f < 0 ? 50 + f * 50 : 50) + '%';
+		wheelFill.style.width = Math.abs(f) * 50 + '%';
 
 		glow(150, 100, 180, 'rgba(251,191,36,.08)');
 		glow(650, 100, 180, 'rgba(251,191,36,.08)');

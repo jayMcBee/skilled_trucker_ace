@@ -69,8 +69,10 @@ function syncTrailer(r) {
 }
 
 function stepRig(r, drive, steerInput) {
+	// Caster self-aligning torque scales with speed, so a stopped rig holds its wheel where
+	// you left it. That is what lets you set the angle before shifting into reverse.
 	if (steerInput) r.steer = clamp(r.steer + steerInput * r.steerRate, -r.maxSteer, r.maxSteer);
-	else r.steer = towardZero(r.steer, r.steerRate * 1.5);
+	else r.steer = towardZero(r.steer, r.steerRate * 1.5 * Math.min(1, Math.abs(r.speed) / r.maxSpeed));
 
 	if (drive > 0) r.speed = Math.min(r.speed + r.accel, r.maxSpeed);
 	else if (drive < 0) r.speed = Math.max(r.speed - r.accel, -r.maxSpeed * r.reverseFactor);
@@ -171,6 +173,22 @@ if (typeof window === 'undefined') {
 	var art0 = Math.abs(normAngle(b.angle - b.trailer.angle));
 	for (i = 0; i < 200; i++) stepRig(b, -1, 0);
 	assert.ok(Math.abs(normAngle(b.angle - b.trailer.angle)) > art0 * 3, 'reverse must diverge');
+
+	// Dry steering: the wheel holds its angle at a standstill, and a stopped rig never rotates.
+	var s = makeRig(0, 0, 0);
+	for (i = 0; i < 10; i++) stepRig(s, 0, 1);
+	var held = s.steer;
+	assert.ok(held > 0.3, 'wheel must turn while stopped');
+	for (i = 0; i < 30; i++) stepRig(s, 0, 0);
+	assert.strictEqual(s.steer, held, 'wheel must hold its angle at a standstill');
+	assert.strictEqual(s.angle, 0, 'a stopped rig must not rotate');
+
+	// Rolling, it still self-centres when you let go.
+	var m = makeRig(0, 0, 0);
+	for (i = 0; i < 30; i++) stepRig(m, 1, 1);
+	var atSpeed = Math.abs(m.steer);
+	for (i = 0; i < 80; i++) stepRig(m, 1, 0);
+	assert.ok(Math.abs(m.steer) < atSpeed * 0.2, 'wheel must self-centre while rolling');
 
 	// No NaN anywhere (the old build produced a NaN trailer on frame 1 and never recovered).
 	var n = makeRig(LEVEL.start.x, LEVEL.start.y, LEVEL.start.angle);
