@@ -22,7 +22,10 @@ var SPEC = {
 	// not per second, so reverse speed buys nothing but reaction time -- and forward speed costs
 	// nothing, because the fold converges going forward. They are unrelated numbers.
 	fwdSpeed: 5.60,         // m/s = 20.2 km/h
-	revSpeed: 2.20,         // m/s = 7.9 km/h
+	// Reverse was set from what real yard backing looks like, and rejected as slow motion at
+	// 5.1, 5.2 and 7.9 km/h. Realism loses: this is a casual game and reverse is most of it.
+	// The cost is the fold clock, which is on screen next to the dial rather than hidden.
+	revSpeed: 4.40,         // m/s = 15.8 km/h
 	accel: 7.00,
 	friction: 7.00,
 	maxSteer: 0.42,         // 24 deg
@@ -55,7 +58,9 @@ var CANVAS = { w: 850, h: 650 };
 // things: forward speed against nothing at all, reverse speed against the fold clock.
 var FWD = 1, REV = 1;
 function setFwd(v) { FWD = clamp(v, 0.3, 2.5); return FWD; }
-function setRev(v) { REV = clamp(v, 0.3, 3.0); return REV; }
+// Upper bound is deliberately tight: the base reverse speed is now high, so a wide multiplier
+// on top of it reaches the 1.1s fold clock that made the game unplayable to begin with.
+function setRev(v) { REV = clamp(v, 0.3, 1.6); return REV; }
 var PRESET, SCALE, TRUCK, LEVEL;
 
 function usePreset(i) {
@@ -342,12 +347,14 @@ if (typeof window === 'undefined') {
 		}
 		// Playability bars apply to candidate presets. The baseline preset exists precisely to
 		// show the bad case, so it is held to correctness only.
+		// 2.5s, not 4s: the 4s bar was my own guess, and a faster reverse was explicitly wanted.
+		// This still catches the 1.1s original that made the game unplayable in the first place.
 		if (!p.baseline)
-			assert.ok(foldAt === null || foldAt > 4, 'full-lock reverse must take over 4s to fold, got ' + foldAt + tag);
+			assert.ok(foldAt === null || foldAt > 2.5, 'full-lock reverse must take over 2.5s to fold, got ' + foldAt + tag);
 
 		// Same, at the fastest the reverse dial goes: it must not be able to make the fold
 		// uncatchable, which is the one thing it could quietly ruin.
-		setRev(3.0);
+		setRev(1.6);
 		var cf = makeRig(400, 300, 0), fastFold = null;
 		for (i = 0; i < 60 / DT; i++) {
 			cf.steer = cf.maxSteer;
