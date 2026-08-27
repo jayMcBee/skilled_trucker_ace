@@ -326,19 +326,39 @@
 		ctx.closePath();
 		ctx.fill();
 
-		var ww = Math.max(2, len * 0.23), wl = Math.max(1.5, wid * 0.13);
-		ctx.fillStyle = '#0f172a';
-		[-1, 1].forEach(function (side) {
-			ctx.save();
-			ctx.translate(len * 0.32, side * wid * 0.47);
-			ctx.rotate(steer);
-			ctx.fillRect(-ww / 2, -wl / 2, ww, wl);
-			ctx.restore();
-			ctx.fillRect(-len * 0.36 - ww / 2, side * wid * 0.47 - wl / 2, ww, wl);
-		});
-
 		ctx.restore();
 		drawCabBody(x, y, angle, '#dc2626');
+		drawSteeredWheels(x, y, angle, steer);
+	}
+
+	// The steered wheels ARE the steering readout, so they are drawn last, oversized, and set
+	// proud of the body. Previously they were drawn before the cab body and 73% covered by it,
+	// in #0f172a on #0f131d asphalt: 1.04:1 contrast, which is to say not drawn at all.
+	// Light core in a dark casing, so the mark reads against both the asphalt and the red cab.
+	function drawSteeredWheels(x, y, angle, steer) {
+		var len = TRUCK.cabLen, wid = TRUCK.cabWid;
+		var wlen = Math.max(6, len * 0.46), wwid = Math.max(2.5, wid * 0.17);
+		ctx.save();
+		ctx.translate(x, y);
+		ctx.rotate(angle);
+		[-1, 1].forEach(function (side) {
+			// Rear wheels: fixed, so the front pair reads as an angle relative to something.
+			ctx.fillStyle = '#020617';
+			ctx.fillRect(-len * 0.34 - wlen * 0.35, side * wid * 0.5 - wwid / 2, wlen * 0.7, wwid);
+
+			ctx.save();
+			ctx.translate(len * 0.34, side * wid * 0.5);
+			// Drawn rotation is exaggerated. Full lock is only 24 degrees, which on a 13px wheel
+			// moves the tip under 3px -- true, and unreadable. At 2.2x it reads as ~53 degrees.
+			// The player needs direction and relative magnitude, not a protractor.
+			ctx.rotate(steer * 2.2);
+			ctx.fillStyle = '#020617';
+			ctx.fillRect(-wlen / 2 - 1, -wwid / 2 - 1, wlen + 2, wwid + 2);
+			ctx.fillStyle = '#e2e8f0';
+			ctx.fillRect(-wlen / 2, -wwid / 2, wlen, wwid);
+			ctx.restore();
+		});
+		ctx.restore();
 	}
 
 	function glow(x, y, radius, color) {
