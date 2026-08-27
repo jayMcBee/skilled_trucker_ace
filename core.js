@@ -125,18 +125,16 @@ function projectTrailerPath(r, distance, steps) {
 		trailer: { x: r.trailer.x, y: r.trailer.y, angle: r.trailer.angle,
 			len: r.trailer.len, wid: r.trailer.wid, kingpinToAxle: r.trailer.kingpinToAxle }
 	};
-	var tail = function (g) {
-		return { x: g.trailer.x - Math.cos(g.trailer.angle) * g.trailer.len / 2,
-			y: g.trailer.y - Math.sin(g.trailer.angle) * g.trailer.len / 2 };
-	};
+	// Returns trailer POSES, not tail points. The tail's own locus corkscrews once the fold
+	// starts accelerating -- correct, and unreadable. Where the box ends up is the useful answer.
 	var dt = (distance / steps) / Math.abs(c.speed);
-	var out = [tail(c)], i, art;
-	out[0].fold = Math.abs(normAngle(c.angle - c.trailer.angle)) / MAX_ARTICULATION;
+	var out = [], i, art;
 	for (i = 0; i < steps; i++) {
 		art = stepRig(c, -1, 0, dt);
-		var p = tail(c);
-		p.fold = Math.abs(art) / MAX_ARTICULATION;
-		out.push(p);
+		out.push({ x: c.trailer.x, y: c.trailer.y, angle: c.trailer.angle,
+			fold: Math.abs(art) / MAX_ARTICULATION });
+		// Past this the rig is committed to the stop and every further pose is the same jackknife.
+		if (Math.abs(art) / MAX_ARTICULATION > 0.85) break;
 	}
 	return out;
 }

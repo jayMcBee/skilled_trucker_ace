@@ -366,31 +366,39 @@
 		});
 	}
 
-	// Where the trailer's tail goes if you hold this wheel and reverse. Drawn from the tail,
-	// because that is what has to land in the bay and where the eyes already are -- and because
-	// the tractor's arc and the trailer's point OPPOSITE ways, which is the whole difficulty.
+	// Ghost outlines of where the trailer ends up if you hold this wheel and reverse. Three
+	// boxes, not a line: the tail's own path corkscrews once the fold accelerates, which is
+	// correct and completely unreadable. A ghost of the box is what a person can actually act on.
 	function drawTrailerPath() {
 		var st = presetStats();
 		var reach = 0.65 * (st.foldClock === null ? 4 : st.foldClock) * rig.reverseSpeed;
-		var pts = projectTrailerPath(rig, reach, 16), i;
+		var poses = projectTrailerPath(rig, reach, 18);
+		if (!poses.length) return;
 
-		for (i = 1; i < pts.length; i++) {
-			var fold = pts[i].fold;
-			// Escalate as the fold approaches the stop, landing on the fail colour when it is
+		[0.34, 0.67, 1].forEach(function (frac, n) {
+			var p = poses[Math.min(poses.length - 1, Math.round(frac * (poses.length - 1)))];
+			// Escalate as the fold nears the stop, landing on the fail colour when it is
 			// no longer recoverable. Same shape Ford, GM and Ram all use.
-			var core = fold > 0.8 ? '#f43f5e' : (fold > 0.6 ? '#fb923c' : '#38bdf8');
-			ctx.globalAlpha = 0.95 - 0.55 * (i / pts.length);
-			[['rgba(2,6,23,.75)', TRUCK.trailerWid * 0.14], [core, TRUCK.trailerWid * 0.07]].forEach(function (pass) {
-				ctx.strokeStyle = pass[0];
-				ctx.lineWidth = pass[1];
-				ctx.lineCap = 'round';
-				ctx.beginPath();
-				ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
-				ctx.lineTo(pts[i].x, pts[i].y);
-				ctx.stroke();
-			});
-		}
+			var col = p.fold > 0.8 ? '#f43f5e' : (p.fold > 0.6 ? '#fb923c' : '#38bdf8');
+			var c = getBoxCorners(p.x, p.y, TRUCK.trailerLen, TRUCK.trailerWid, p.angle);
+
+			ctx.globalAlpha = 0.55 - n * 0.13;
+			ctx.strokeStyle = 'rgba(2,6,23,.8)';
+			ctx.lineWidth = Math.max(3, TRUCK.trailerWid * 0.13);
+			outline(c);
+			ctx.strokeStyle = col;
+			ctx.lineWidth = Math.max(1.2, TRUCK.trailerWid * 0.055);
+			outline(c);
+		});
 		ctx.globalAlpha = 1;
+	}
+
+	function outline(c) {
+		ctx.beginPath();
+		ctx.moveTo(c[0].x, c[0].y);
+		for (var i = 1; i < 4; i++) ctx.lineTo(c[i].x, c[i].y);
+		ctx.closePath();
+		ctx.stroke();
 	}
 
 	// The steered wheels ARE the steering readout, so they are drawn last, oversized, and set
