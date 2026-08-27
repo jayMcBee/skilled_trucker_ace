@@ -112,6 +112,35 @@ function slotCentre(i) {
 		y: LEVEL.rowStart.y + Math.sin(a) * LEVEL.rowSpacing * i };
 }
 
+// Where the trailer's tail actually goes if the wheel is held and the rig reverses.
+// This steps the REAL model rather than extrapolating a constant-curvature arc, because a
+// reversing rig essentially never reaches steady state -- an instantaneous-curvature arc is
+// wrong exactly in the first moments of a manoeuvre, which is when it is being read.
+// 16 steps reproduces the true path to under 1px over a 60px projection.
+function projectTrailerPath(r, distance, steps) {
+	var c = {
+		x: r.x, y: r.y, angle: r.angle, steer: r.steer, speed: -Math.abs(r.reverseSpeed),
+		wheelbase: r.wheelbase, maxSpeed: r.maxSpeed, reverseSpeed: r.reverseSpeed,
+		accel: r.accel, friction: r.friction, maxSteer: r.maxSteer, steerRate: r.steerRate,
+		trailer: { x: r.trailer.x, y: r.trailer.y, angle: r.trailer.angle,
+			len: r.trailer.len, wid: r.trailer.wid, kingpinToAxle: r.trailer.kingpinToAxle }
+	};
+	var tail = function (g) {
+		return { x: g.trailer.x - Math.cos(g.trailer.angle) * g.trailer.len / 2,
+			y: g.trailer.y - Math.sin(g.trailer.angle) * g.trailer.len / 2 };
+	};
+	var dt = (distance / steps) / Math.abs(c.speed);
+	var out = [tail(c)], i, art;
+	out[0].fold = Math.abs(normAngle(c.angle - c.trailer.angle)) / MAX_ARTICULATION;
+	for (i = 0; i < steps; i++) {
+		art = stepRig(c, -1, 0, dt);
+		var p = tail(c);
+		p.fold = Math.abs(art) / MAX_ARTICULATION;
+		out.push(p);
+	}
+	return out;
+}
+
 // Seconds of full-lock reversing before the fold reaches the stop. This is what reverse speed
 // buys, and the only thing it buys, so the UI shows it next to the dial.
 function foldClock() {

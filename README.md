@@ -43,6 +43,20 @@ That ratio decides whether a held wheel settles or runs away:
 A real WB-67 semi is 0.62 rig lengths. Turn radius on its own is the wrong thing to compare;
 radius relative to rig length is what decides whether the lot has room.
 
+## Reading the rig
+
+Three cues, in different places and different shapes, so they never compete:
+
+- **Wedge at the cab nose** — the steering angle. Straight edges always mean wheel angle.
+  It resolves 1.69px per degree, against 0.088 for the front wheels and 1.33 for a HUD bar,
+  because angular precision is linear in length and a wheel is 10px long.
+- **Line off the trailer's tail** — where that tail goes if you hold this wheel and reverse.
+  Curves always mean predicted path. It steps the real model rather than extrapolating an arc,
+  since a reversing rig never reaches steady state. Colour escalates cyan → orange → red as the
+  fold approaches the stop. Toggle with `P`.
+- **Front wheels** — diegetic, always on. Drawn 1.6x their true angle: full lock is 24°, which
+  on a 13px wheel moves the tip under 3px. Real steer axles reach ~50°, so 1.6x stays possible.
+
 ## Layout
 
 - `index.html` — rendering, input, game state

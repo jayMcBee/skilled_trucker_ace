@@ -95,8 +95,8 @@
 	<div id="preset-bar"></div>
 	<div id="preset-stats"></div>
 	<div id="controls-hint">
-		<strong>Drive</strong> W / S &nbsp; <strong>Steer</strong> A / D &nbsp; <strong>Restart</strong> R &nbsp; <strong>Preset</strong> 1-5 &nbsp; <strong>Forward</strong> + / - &nbsp; <strong>Reverse</strong> [ / ]<br>
-		The wheel holds its angle — steer back to straighten. Reversing, the fold always grows; countersteer to hold it.
+		<strong>Drive</strong> W / S &nbsp; <strong>Steer</strong> A / D &nbsp; <strong>Restart</strong> R &nbsp; <strong>Preset</strong> 1-5 &nbsp; <strong>Forward</strong> + / - &nbsp; <strong>Reverse</strong> [ / ] &nbsp; <strong>Path</strong> P<br>
+		The wedge at the nose is the wheel angle. The line off the trailer is where its tail will go if you reverse.<br>The wheel holds its angle — steer back to straighten. Reversing, the fold always grows; countersteer to hold it.
 	</div>
 
 <script src="core.js"></script>
@@ -118,7 +118,7 @@
 		ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right'
 	};
 
-	var rig, lot, obstacleBoxes, shifts, lastDir, isGameOver, activePreset = 0;
+	var rig, lot, obstacleBoxes, shifts, lastDir, isGameOver, activePreset = 0, showPath = true;
 
 	PRESETS.forEach(function (p, i) {
 		var b = document.createElement('button');
@@ -131,6 +131,7 @@
 		if (e.key === 'r' || e.key === 'R') return initGame(activePreset);
 		if (e.key === '+' || e.key === '=') { setFwd(FWD + 0.1); return initGame(activePreset); }
 		if (e.key === '-' || e.key === '_') { setFwd(FWD - 0.1); return initGame(activePreset); }
+		if (e.key === 'p' || e.key === 'P') { showPath = !showPath; return; }
 		if (e.key === ']') { setRev(REV + 0.1); return initGame(activePreset); }
 		if (e.key === '[') { setRev(REV - 0.1); return initGame(activePreset); }
 		for (var i = 0; i < PRESETS.length; i++)
@@ -239,6 +240,9 @@
 		var nose = TRUCK.cabLen * 0.18;
 		drawCab(rig.x + Math.cos(rig.angle) * nose, rig.y + Math.sin(rig.angle) * nose, rig.angle, rig.steer);
 
+		if (showPath) drawTrailerPath();
+		drawSteerWedge();
+
 		var f = rig.steer / rig.maxSteer;
 		wheelFill.style.left = (f < 0 ? 50 + f * 50 : 50) + '%';
 		wheelFill.style.width = Math.abs(f) * 50 + '%';
@@ -317,18 +321,76 @@
 		ctx.translate(x, y);
 		ctx.rotate(angle);
 
-		ctx.fillStyle = 'rgba(254,240,138,.12)';
-		ctx.beginPath();
-		ctx.moveTo(len / 2, -wid * 0.4);
-		ctx.lineTo(len / 2 + len * 3.2, -wid * 1.3);
-		ctx.lineTo(len / 2 + len * 3.2, wid * 1.3);
-		ctx.lineTo(len / 2, wid * 0.4);
-		ctx.closePath();
-		ctx.fill();
-
 		ctx.restore();
 		drawCabBody(x, y, angle, '#dc2626');
 		drawSteeredWheels(x, y, angle, steer);
+	}
+
+	// The wedge is the steering readout, not the HUD bar. Two lines from the cab nose: a dim one
+	// along the heading, a bright one at the wheel angle, filled between. The eye judges the angle
+	// BETWEEN two adjacent lines far better than one line's absolute orientation, and at
+	// 2.2 x cabLen it resolves 1.69px per degree -- more precise than the 64px bar at the top of
+	// the screen, while being where you are already looking.
+	// Straight edges mean wheel angle. Curves mean predicted path. The two never mix.
+	function drawSteerWedge() {
+		var reach = TRUCK.cabLen * 2.2;
+		var nose = TRUCK.cabLen * 0.18 + TRUCK.cabLen * 0.5;
+		var ox = rig.x + Math.cos(rig.angle) * nose, oy = rig.y + Math.sin(rig.angle) * nose;
+		var a1 = rig.angle, a2 = rig.angle + rig.steer;
+
+		if (rig.steer !== 0) {
+			ctx.fillStyle = 'rgba(56,189,248,.26)';
+			ctx.beginPath();
+			ctx.moveTo(ox, oy);
+			ctx.lineTo(ox + Math.cos(a1) * reach, oy + Math.sin(a1) * reach);
+			ctx.lineTo(ox + Math.cos(a2) * reach, oy + Math.sin(a2) * reach);
+			ctx.closePath();
+			ctx.fill();
+		}
+
+		ctx.strokeStyle = 'rgba(255,255,255,.24)';
+		ctx.lineWidth = 1.5;
+		ctx.beginPath();
+		ctx.moveTo(ox, oy);
+		ctx.lineTo(ox + Math.cos(a1) * reach, oy + Math.sin(a1) * reach);
+		ctx.stroke();
+
+		// Dark casing first: no single colour survives both the asphalt and a white trailer.
+		[['rgba(2,6,23,.7)', 5], ['#38bdf8', 2.5]].forEach(function (pass) {
+			ctx.strokeStyle = pass[0];
+			ctx.lineWidth = pass[1];
+			ctx.beginPath();
+			ctx.moveTo(ox, oy);
+			ctx.lineTo(ox + Math.cos(a2) * reach, oy + Math.sin(a2) * reach);
+			ctx.stroke();
+		});
+	}
+
+	// Where the trailer's tail goes if you hold this wheel and reverse. Drawn from the tail,
+	// because that is what has to land in the bay and where the eyes already are -- and because
+	// the tractor's arc and the trailer's point OPPOSITE ways, which is the whole difficulty.
+	function drawTrailerPath() {
+		var st = presetStats();
+		var reach = 0.65 * (st.foldClock === null ? 4 : st.foldClock) * rig.reverseSpeed;
+		var pts = projectTrailerPath(rig, reach, 16), i;
+
+		for (i = 1; i < pts.length; i++) {
+			var fold = pts[i].fold;
+			// Escalate as the fold approaches the stop, landing on the fail colour when it is
+			// no longer recoverable. Same shape Ford, GM and Ram all use.
+			var core = fold > 0.8 ? '#f43f5e' : (fold > 0.6 ? '#fb923c' : '#38bdf8');
+			ctx.globalAlpha = 0.95 - 0.55 * (i / pts.length);
+			[['rgba(2,6,23,.75)', TRUCK.trailerWid * 0.14], [core, TRUCK.trailerWid * 0.07]].forEach(function (pass) {
+				ctx.strokeStyle = pass[0];
+				ctx.lineWidth = pass[1];
+				ctx.lineCap = 'round';
+				ctx.beginPath();
+				ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+				ctx.lineTo(pts[i].x, pts[i].y);
+				ctx.stroke();
+			});
+		}
+		ctx.globalAlpha = 1;
 	}
 
 	// The steered wheels ARE the steering readout, so they are drawn last, oversized, and set
@@ -337,21 +399,21 @@
 	// Light core in a dark casing, so the mark reads against both the asphalt and the red cab.
 	function drawSteeredWheels(x, y, angle, steer) {
 		var len = TRUCK.cabLen, wid = TRUCK.cabWid;
-		var wlen = Math.max(6, len * 0.46), wwid = Math.max(2.5, wid * 0.17);
+		var wlen = Math.max(6, len * 0.40), wwid = Math.max(2.5, wid * 0.17);
 		ctx.save();
 		ctx.translate(x, y);
 		ctx.rotate(angle);
 		[-1, 1].forEach(function (side) {
 			// Rear wheels: fixed, so the front pair reads as an angle relative to something.
 			ctx.fillStyle = '#020617';
-			ctx.fillRect(-len * 0.34 - wlen * 0.35, side * wid * 0.5 - wwid / 2, wlen * 0.7, wwid);
+			ctx.fillRect(-len * 0.34 - wlen * 0.35, side * wid * 0.60 - wwid / 2, wlen * 0.7, wwid);
 
 			ctx.save();
-			ctx.translate(len * 0.34, side * wid * 0.5);
+			ctx.translate(len * 0.34, side * wid * 0.60);
 			// Drawn rotation is exaggerated. Full lock is only 24 degrees, which on a 13px wheel
 			// moves the tip under 3px -- true, and unreadable. At 2.2x it reads as ~53 degrees.
 			// The player needs direction and relative magnitude, not a protractor.
-			ctx.rotate(steer * 2.2);
+			ctx.rotate(steer * 1.6);
 			ctx.fillStyle = '#020617';
 			ctx.fillRect(-wlen / 2 - 1, -wwid / 2 - 1, wlen + 2, wwid + 2);
 			ctx.fillStyle = '#e2e8f0';
