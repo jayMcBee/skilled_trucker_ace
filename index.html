@@ -414,10 +414,10 @@
 		[-1, 1].forEach(function (side) {
 			// Rear wheels: fixed, so the front pair reads as an angle relative to something.
 			ctx.fillStyle = '#020617';
-			ctx.fillRect(-len * 0.34 - wlen * 0.35, side * wid * 0.60 - wwid / 2, wlen * 0.7, wwid);
+			ctx.fillRect(-len * 0.34 - wlen * 0.35, side * wid * 0.40 - wwid / 2, wlen * 0.7, wwid);
 
 			ctx.save();
-			ctx.translate(len * 0.34, side * wid * 0.60);
+			ctx.translate(len * 0.34, side * wid * 0.40);
 			// Drawn rotation is exaggerated. Full lock is only 24 degrees, which on a 13px wheel
 			// moves the tip under 3px -- true, and unreadable. At 2.2x it reads as ~53 degrees.
 			// The player needs direction and relative magnitude, not a protractor.
