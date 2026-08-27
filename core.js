@@ -55,11 +55,20 @@ var JACKKNIFE_ENDS_RUN = false;     // ponytail: one flag, not a mode system. Ex
 function makeRig(x, y, angle) {
 	var r = {
 		x: x, y: y, angle: angle, speed: 0, steer: 0,
-		// Per SECOND, not per frame, so 60Hz feel is unchanged and every other refresh rate is
-		// now correct rather than proportionally faster. Speeds and rates convert x60,
+		// Per SECOND, not per frame. Speeds convert x60 from the old per-frame numbers,
 		// accelerations x60^2 since they are distance per time SQUARED.
-		wheelbase: 34, maxSpeed: 108, reverseFactor: 0.55,
-		accel: 144, friction: 126, maxSteer: 0.65, steerRate: 2.7,
+		//
+		// Scale is fixed by the drawing: the 155px trailer is a 53ft box, so 9.6 px/m.
+		// These are yard-manoeuvring numbers, not road numbers. Reversing especially: a
+		// reversing trailer's equilibrium fold angle is UNSTABLE, so the fold is a countdown
+		// you countersteer against, and speed sets the clock. At the old 22 km/h you had
+		// barely a second. Real yard backing is idle-creep, 2-5 km/h.
+		wheelbase: 34,          // 3.54 m
+		maxSpeed: 45,           // 16.9 km/h forward
+		reverseFactor: 0.30,    // 13.5 px/s = 5.1 km/h reversing
+		accel: 60, friction: 55,
+		maxSteer: 0.42,         // 24 deg. Past this the fold just gets faster, never more useful.
+		steerRate: 0.7,         // 0.6 s centre to lock, in line with a heavy truck's rack
 		trailer: { x: 0, y: 0, angle: angle, len: TRUCK.trailerLen, wid: TRUCK.trailerWid, kingpinToAxle: 118 }
 	};
 	syncTrailer(r);
@@ -184,33 +193,45 @@ if (typeof window === 'undefined') {
 	for (var i = 0; i < 400; i++) stepRig(r, 1, 0, DT);
 	assert.ok(Math.abs(normAngle(r.angle - r.trailer.angle)) < 0.05, 'forward must converge, got ' + normAngle(r.angle - r.trailer.angle));
 
-	// Reverse is unstable: the whole point of the game.
+	// Reverse is unstable: the whole point of the game. With the wheel straight the fold grows
+	// at |v|/kingpinToAxle per second, so this is stated in SECONDS rather than frames -- a
+	// frame count silently becomes a different test every time the speeds are retuned.
 	var b = makeRig(400, 300, 0);
 	b.trailer.angle = 0.05;
 	var art0 = Math.abs(normAngle(b.angle - b.trailer.angle));
-	for (i = 0; i < 200; i++) stepRig(b, -1, 0, DT);
+	for (i = 0; i < 15 / DT; i++) stepRig(b, -1, 0, DT);
 	assert.ok(Math.abs(normAngle(b.angle - b.trailer.angle)) > art0 * 3, 'reverse must diverge');
+
+	// And the fold must stay slow enough to be catchable. Under about 4 seconds at full lock
+	// there is no time to react, which is what made the old 22 km/h reverse unplayable.
+	var c = makeRig(400, 300, 0), foldAt = null;
+	for (i = 0; i < 60 / DT; i++) {
+		c.steer = c.maxSteer;
+		stepRig(c, -1, 0, DT);
+		if (foldAt === null && Math.abs(normAngle(c.angle - c.trailer.angle)) > 1.44) foldAt = i * DT;
+	}
+	assert.ok(foldAt === null || foldAt > 4, 'full-lock reverse must take over 4s to fold, got ' + foldAt);
 
 	// Dry steering: the wheel holds its angle at a standstill, and a stopped rig never rotates.
 	var s = makeRig(0, 0, 0);
-	for (i = 0; i < 10; i++) stepRig(s, 0, 1, DT);
+	for (i = 0; i < 1 / DT; i++) stepRig(s, 0, 1, DT);       // one second of steering input
 	var held = s.steer;
-	assert.ok(held > 0.3, 'wheel must turn while stopped');
-	for (i = 0; i < 30; i++) stepRig(s, 0, 0, DT);
+	assert.ok(held > s.maxSteer * 0.5, 'wheel must turn while stopped, got ' + held);
+	for (i = 0; i < 1 / DT; i++) stepRig(s, 0, 0, DT);
 	assert.strictEqual(s.steer, held, 'wheel must hold its angle at a standstill');
 	assert.strictEqual(s.angle, 0, 'a stopped rig must not rotate');
 
 	// Rolling, it holds too: a set wheel keeps the rig turning until you steer back.
 	var m = makeRig(0, 0, 0);
-	for (i = 0; i < 30; i++) stepRig(m, 1, 1, DT);
+	for (i = 0; i < 1 / DT; i++) stepRig(m, 1, 1, DT);
 	var atSpeed = m.steer, heading = m.angle;
-	for (i = 0; i < 60; i++) stepRig(m, 1, 0, DT);
+	for (i = 0; i < 2 / DT; i++) stepRig(m, 1, 0, DT);
 	assert.strictEqual(m.steer, atSpeed, 'wheel must hold its angle while rolling');
 	assert.ok(Math.abs(normAngle(m.angle - heading)) > 0.5, 'a held wheel must keep the rig turning');
 
 	// Steering back reaches exactly centre rather than hunting around it, and passing
 	// through the detent does not trap the wheel there.
-	for (i = 0; i < 20 && m.steer !== 0; i++) stepRig(m, 1, -1, DT);
+	for (i = 0; i < 5 / DT && m.steer !== 0; i++) stepRig(m, 1, -1, DT);
 	assert.strictEqual(m.steer, 0, 'steering back must land on exact centre');
 	stepRig(m, 1, -1, DT);
 	assert.ok(m.steer < 0, 'the centre detent must not block steering past it');
