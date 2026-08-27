@@ -37,8 +37,26 @@
 		width: 1px; height: 12px; background: rgba(255,255,255,.35);
 	}
 	#wheel-fill { position: absolute; top: 0; height: 6px; background: #38bdf8; border-radius: 3px; }
-	#controls-hint { margin-top: 12px; color: #6b7280; font-size: 13px; text-align: center; }
-	#controls-hint strong { color: #9ca3af; }
+
+	#preset-bar {
+		margin-top: 14px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
+	}
+	#preset-bar button {
+		background: #111827; color: #9ca3af; border: 1px solid #1f2937;
+		padding: 7px 13px; font-size: 12px; letter-spacing: .4px;
+	}
+	#preset-bar button:hover { background: #1f2937; color: #e5e7eb; }
+	#preset-bar button.active {
+		background: #38bdf8; color: #04121c; border-color: #38bdf8; font-weight: 700;
+	}
+	#preset-bar button:focus-visible { outline: 2px solid #f43f5e; outline-offset: 2px; }
+	#preset-stats {
+		margin-top: 10px; font-size: 12px; color: #6b7280;
+		font-variant-numeric: tabular-nums; text-align: center; line-height: 1.7;
+	}
+	#preset-stats b { color: #9ca3af; font-weight: 600; }
+	#controls-hint { margin-top: 8px; color: #4b5563; font-size: 12px; text-align: center; line-height: 1.7; }
+	#controls-hint strong { color: #6b7280; }
 	#modal {
 		position: absolute; inset: 0; background: rgba(5,7,12,.9);
 		display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -48,12 +66,15 @@
 	#modal h1 { font-size: 28px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
 	#modal p { font-size: 15px; margin-bottom: 20px; color: #9ca3af; }
 	button {
-		background: #e11d48; color: #fff; border: none; padding: 10px 24px;
-		font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer;
-		text-transform: uppercase; letter-spacing: 1px; transition: background .2s, transform .1s;
+		border: none; border-radius: 4px; cursor: pointer;
+		text-transform: uppercase; transition: background .15s, transform .1s;
 	}
-	button:hover { background: #f43f5e; transform: translateY(-1px); }
-	button:active { transform: translateY(1px); }
+	#restart-btn {
+		background: #e11d48; color: #fff; padding: 10px 24px;
+		font-size: 14px; font-weight: bold; letter-spacing: 1px;
+	}
+	#restart-btn:hover { background: #f43f5e; transform: translateY(-1px); }
+	@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
@@ -70,8 +91,12 @@
 			<button id="restart-btn">Try Again</button>
 		</div>
 	</div>
+
+	<div id="preset-bar"></div>
+	<div id="preset-stats"></div>
 	<div id="controls-hint">
-		<strong>Drive:</strong> W / S or Up / Down &nbsp;|&nbsp; <strong>Steer:</strong> A / D or Left / Right &nbsp;|&nbsp; <strong>R:</strong> Restart<br>The wheel holds its angle. Steer back to straighten — it stops dead on centre.<br>Reversing, the fold always grows — countersteer to hold it. Fold too far and it jams at the stop.
+		<strong>Drive</strong> W / S &nbsp; <strong>Steer</strong> A / D &nbsp; <strong>Restart</strong> R &nbsp; <strong>Preset</strong> 1-5<br>
+		The wheel holds its angle — steer back to straighten. Reversing, the fold always grows; countersteer to hold it.
 	</div>
 
 <script src="core.js"></script>
@@ -80,32 +105,58 @@
 	var ctx = canvas.getContext('2d');
 	var gearShiftsEl = document.getElementById('gear-shifts');
 	var alignmentEl = document.getElementById('alignment-pct');
+	var wheelFill = document.getElementById('wheel-fill');
 	var modal = document.getElementById('modal');
 	var modalTitle = document.getElementById('modal-title');
 	var modalDesc = document.getElementById('modal-desc');
-	var wheelFill = document.getElementById('wheel-fill');
+	var presetBar = document.getElementById('preset-bar');
+	var presetStatsEl = document.getElementById('preset-stats');   // not presetStats: that is core.js's function
 
 	var keys = { up: false, down: false, left: false, right: false };
 	var KEYMAP = {
 		ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down',
 		ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right'
 	};
+
+	var rig, lot, obstacleBoxes, shifts, lastDir, isGameOver, activePreset = 0;
+
+	PRESETS.forEach(function (p, i) {
+		var b = document.createElement('button');
+		b.innerText = p.key + '  ' + p.name;
+		b.addEventListener('click', function () { initGame(i); });
+		presetBar.appendChild(b);
+	});
+
 	window.addEventListener('keydown', function (e) {
-		if (e.key === 'r' || e.key === 'R') return initGame();
+		if (e.key === 'r' || e.key === 'R') return initGame(activePreset);
+		for (var i = 0; i < PRESETS.length; i++)
+			if (e.key === PRESETS[i].key) return initGame(i);
 		if (KEYMAP[e.key]) { keys[KEYMAP[e.key]] = true; e.preventDefault(); }
 	});
 	window.addEventListener('keyup', function (e) { if (KEYMAP[e.key]) keys[KEYMAP[e.key]] = false; });
-	document.getElementById('restart-btn').addEventListener('click', initGame);
+	document.getElementById('restart-btn').addEventListener('click', function () { initGame(activePreset); });
 
-	var rig, lot, obstacleBoxes, shifts, lastDir, isGameOver;
-
-	function initGame() {
-		lot = buildLot(LEVEL);
+	function initGame(presetIndex) {
+		activePreset = presetIndex;
+		usePreset(presetIndex);
+		lot = buildLot();
 		obstacleBoxes = lotObstacles(lot);
 		rig = makeRig(LEVEL.start.x, LEVEL.start.y, LEVEL.start.angle);
 		shifts = 0; lastDir = 0; isGameOver = false;
 		gearShiftsEl.innerText = '0';
 		modal.classList.remove('active');
+
+		var st = presetStats();
+		Array.prototype.forEach.call(presetBar.children, function (b, i) {
+			b.className = i === presetIndex ? 'active' : '';
+		});
+		presetStatsEl.innerHTML =
+			'<b>' + st.name + '</b> &nbsp;·&nbsp; wheelbase/trailer <b>' + st.ratio.toFixed(2) + '</b>' +
+			' &nbsp;·&nbsp; turn radius <b>' + st.turnRadiusPx.toFixed(0) + 'px</b>' +
+			' &nbsp;·&nbsp; that is <b>' + st.turnPerRig.toFixed(2) + '</b> rig lengths (a real semi is 0.62)' +
+			' &nbsp;·&nbsp; rig <b>' + st.rigLenPx.toFixed(0) + 'px</b><br>' +
+			'holding full lock going forward: <b>' +
+			(st.foldsForward ? 'jackknifes' : 'settles at ' + st.settlesAt.toFixed(0) + '°') + '</b>';
 	}
 
 	function update(dt) {
@@ -116,12 +167,12 @@
 		var articulation = stepRig(rig, drive, steer, dt);
 
 		// Count a shift only when the rig actually reverses direction, not on key press.
-		var dir = rig.speed > 0.01 ? 1 : (rig.speed < -0.01 ? -1 : 0);
+		var dir = rig.speed > 0.5 ? 1 : (rig.speed < -0.5 ? -1 : 0);
 		if (dir !== 0 && lastDir !== 0 && dir !== lastDir) { shifts++; gearShiftsEl.innerText = shifts; }
 		if (dir !== 0) lastDir = dir;
 
 		if (JACKKNIFE_ENDS_RUN && Math.abs(articulation) > MAX_ARTICULATION)
-			return gameOver('Jackknifed!', 'The cab folded into the trailer nose. Ease off the wheel before the angle runs away.', '#f43f5e');
+			return gameOver('Jackknifed!', 'The cab folded into the trailer nose.', '#f43f5e');
 
 		var boxes = rigBoxes(rig);
 		for (var i = 0; i < obstacleBoxes.length; i++)
@@ -134,12 +185,13 @@
 	function checkParked() {
 		var dist = Math.hypot(rig.trailer.x - lot.bay.trailerX, rig.trailer.y - lot.bay.trailerY);
 		var angleDiff = Math.abs(normAngle(rig.trailer.angle - lot.bay.angle));
+		var tol = TRUCK.trailerWid * 0.35;          // tolerance scales with the rig, not the zoom
 
-		var distScore = Math.max(0, 1 - dist / 180);
-		var angleScore = Math.max(0, 1 - angleDiff / (Math.PI / 4));
-		alignmentEl.innerText = Math.round((distScore * 0.5 + angleScore * 0.5) * 100) + '%';
+		alignmentEl.innerText = Math.round((
+			Math.max(0, 1 - dist / (TRUCK.trailerLen * 1.2)) * 0.5 +
+			Math.max(0, 1 - angleDiff / (Math.PI / 4)) * 0.5) * 100) + '%';
 
-		if (dist < 15 && angleDiff < 0.12 && Math.abs(rig.speed) < 0.15)
+		if (dist < tol && angleDiff < 0.12 && Math.abs(rig.speed) < TRUCK.trailerLen * 0.01)
 			gameOver('Perfectly Parked!', 'You fitted the rig in with ' + shifts + ' direction shifts.', '#38bdf8');
 	}
 
@@ -152,6 +204,7 @@
 	}
 
 	// --- render ------------------------------------------------------------
+	// Every dimension comes from TRUCK, so a zoom change needs no drawing changes.
 
 	function draw() {
 		ctx.fillStyle = '#0f131d';
@@ -164,17 +217,18 @@
 
 		drawBay();
 
-		var colors = ['#f8fafc', '#e2e8f0', '#cbd5e1', '#f1f5f9'];
+		var trailerColors = ['#f8fafc', '#e2e8f0', '#cbd5e1', '#f1f5f9'];
 		var cabColors = ['#dc2626', '#3b82f6', '#f59e0b', '#10b981', '#6366f1', '#e2e8f0'];
 		lot.parked.forEach(function (p, i) {
-			drawParkedRig(p.x, p.y, p.angle, colors[i % colors.length], cabColors[i % cabColors.length]);
+			drawParkedRig(p.x, p.y, p.angle, trailerColors[i % trailerColors.length], cabColors[i % cabColors.length]);
 		});
 
 		ctx.fillStyle = '#1e293b';
 		lot.walls.forEach(function (w) { ctx.fillRect(w.x, w.y, w.w, w.h); });
 
-		drawTrailer(rig.trailer.x, rig.trailer.y, rig.trailer.len, rig.trailer.wid, rig.trailer.angle, '#f8fafc', true);
-		drawCab(rig.x + Math.cos(rig.angle) * 8, rig.y + Math.sin(rig.angle) * 8, rig.angle, rig.steer);
+		drawTrailer(rig.trailer.x, rig.trailer.y, rig.trailer.angle, '#f8fafc', true);
+		var nose = TRUCK.cabLen * 0.18;
+		drawCab(rig.x + Math.cos(rig.angle) * nose, rig.y + Math.sin(rig.angle) * nose, rig.angle, rig.steer);
 
 		var f = rig.steer / rig.maxSteer;
 		wheelFill.style.left = (f < 0 ? 50 + f * 50 : 50) + '%';
@@ -186,86 +240,96 @@
 	}
 
 	function drawBay() {
+		var halfL = TRUCK.rigLen / 2 * 1.05, halfW = TRUCK.rigWid / 2 * 1.07;
 		ctx.save();
 		ctx.translate(lot.bay.x, lot.bay.y);
 		ctx.rotate(lot.bay.angle);
 		ctx.strokeStyle = '#eab308';
-		ctx.lineWidth = 3;
+		ctx.lineWidth = Math.max(2, TRUCK.rigWid * 0.05);
 		ctx.beginPath();
-		ctx.moveTo(-105, -31); ctx.lineTo(105, -31);
-		ctx.moveTo(-105, 31); ctx.lineTo(105, 31);
-		ctx.moveTo(-105, -31); ctx.lineTo(-105, 31);
+		ctx.moveTo(-halfL, -halfW); ctx.lineTo(halfL, -halfW);
+		ctx.moveTo(-halfL, halfW); ctx.lineTo(halfL, halfW);
+		ctx.moveTo(-halfL, -halfW); ctx.lineTo(-halfL, halfW);
 		ctx.stroke();
 		ctx.fillStyle = 'rgba(234,179,8,.25)';
-		ctx.font = '900 11px monospace';
+		ctx.font = '900 ' + Math.max(8, Math.round(TRUCK.rigWid * 0.19)) + 'px monospace';
 		ctx.textAlign = 'center';
-		ctx.fillText('RESERVED', 0, 4);
+		ctx.fillText('RESERVED', 0, TRUCK.rigWid * 0.07);
 		ctx.restore();
 	}
 
-	function drawTrailer(x, y, len, wid, angle, color, isPlayer) {
+	function drawTrailer(x, y, angle, color, isPlayer) {
+		var len = TRUCK.trailerLen, wid = TRUCK.trailerWid;
 		ctx.save();
 		ctx.translate(x, y);
 		ctx.rotate(angle);
 		ctx.fillStyle = 'rgba(0,0,0,.6)';
-		ctx.fillRect(-len / 2 + 6, -wid / 2 + 6, len, wid);
+		ctx.fillRect(-len / 2 + wid * 0.14, -wid / 2 + wid * 0.14, len, wid);
 		ctx.fillStyle = color;
 		ctx.fillRect(-len / 2, -wid / 2, len, wid);
 		ctx.fillStyle = 'rgba(0,0,0,.1)';
-		for (var i = -len / 2 + 10; i < len / 2 - 10; i += 12) ctx.fillRect(i, -wid / 2 + 3, 2, wid - 6);
+		for (var i = -len / 2 + len * 0.06; i < len / 2 - len * 0.06; i += len * 0.077)
+			ctx.fillRect(i, -wid / 2 + wid * 0.07, Math.max(1, wid * 0.05), wid * 0.86);
 		ctx.fillStyle = '#ef4444';
 		ctx.shadowColor = '#ef4444';
 		ctx.shadowBlur = isPlayer ? 10 : 4;
-		ctx.fillRect(-len / 2, -wid / 2 + 2, 2, 8);
-		ctx.fillRect(-len / 2, wid / 2 - 10, 2, 8);
+		ctx.fillRect(-len / 2, -wid / 2 + wid * 0.05, Math.max(1, wid * 0.05), wid * 0.19);
+		ctx.fillRect(-len / 2, wid / 2 - wid * 0.24, Math.max(1, wid * 0.05), wid * 0.19);
 		ctx.shadowBlur = 0;
 		ctx.restore();
 	}
 
-	// A parked rig is one 200-long box: trailer across the rear 155, cab on the nose.
+	// A parked rig is one box: trailer across the rear, cab on the nose.
 	function drawParkedRig(x, y, angle, trailerColor, cabColor) {
 		var fx = Math.cos(angle), fy = Math.sin(angle);
-		drawTrailer(x - fx * 22.5, y - fy * 22.5, TRUCK.trailerLen, TRUCK.trailerWid, angle, trailerColor, false);
+		var back = TRUCK.rigLen / 2 - TRUCK.trailerLen / 2;
+		var front = TRUCK.rigLen / 2 - TRUCK.cabLen / 2;
+		drawTrailer(x - fx * back, y - fy * back, angle, trailerColor, false);
+		drawCabBody(x + fx * front, y + fy * front, angle, cabColor);
+	}
+
+	function drawCabBody(x, y, angle, color) {
+		var len = TRUCK.cabLen, wid = TRUCK.cabWid;
 		ctx.save();
-		ctx.translate(x + fx * 78, y + fy * 78);
+		ctx.translate(x, y);
 		ctx.rotate(angle);
 		ctx.fillStyle = 'rgba(0,0,0,.6)';
-		ctx.fillRect(-16, -13, 44, 38);
-		ctx.fillStyle = cabColor;
-		ctx.fillRect(-22, -19, 44, 38);
+		ctx.fillRect(-len / 2 + wid * 0.15, -wid / 2 + wid * 0.15, len, wid);
+		ctx.fillStyle = color;
+		ctx.fillRect(-len / 2, -wid / 2, len, wid);
 		ctx.fillStyle = '#020617';
-		ctx.fillRect(8, -16, 8, 32);
+		ctx.fillRect(len * 0.18, -wid * 0.42, len * 0.18, wid * 0.84);
 		ctx.restore();
 	}
 
 	function drawCab(x, y, angle, steer) {
+		var len = TRUCK.cabLen, wid = TRUCK.cabWid;
 		ctx.save();
 		ctx.translate(x, y);
 		ctx.rotate(angle);
 
 		ctx.fillStyle = 'rgba(254,240,138,.12)';
 		ctx.beginPath();
-		ctx.moveTo(22, -15); ctx.lineTo(162, -49); ctx.lineTo(162, 49); ctx.lineTo(22, 15);
+		ctx.moveTo(len / 2, -wid * 0.4);
+		ctx.lineTo(len / 2 + len * 3.2, -wid * 1.3);
+		ctx.lineTo(len / 2 + len * 3.2, wid * 1.3);
+		ctx.lineTo(len / 2, wid * 0.4);
 		ctx.closePath();
 		ctx.fill();
 
+		var ww = Math.max(2, len * 0.23), wl = Math.max(1.5, wid * 0.13);
 		ctx.fillStyle = '#0f172a';
 		[-1, 1].forEach(function (side) {
 			ctx.save();
-			ctx.translate(14, side * 18);
+			ctx.translate(len * 0.32, side * wid * 0.47);
 			ctx.rotate(steer);
-			ctx.fillRect(-5, -2.5, 10, 5);
+			ctx.fillRect(-ww / 2, -wl / 2, ww, wl);
 			ctx.restore();
-			ctx.fillRect(-16, side * 18 - 2.5, 10, 5);
+			ctx.fillRect(-len * 0.36 - ww / 2, side * wid * 0.47 - wl / 2, ww, wl);
 		});
 
-		ctx.fillStyle = 'rgba(0,0,0,.6)';
-		ctx.fillRect(-16, -13, 44, 38);
-		ctx.fillStyle = '#dc2626';
-		ctx.fillRect(-22, -19, 44, 38);
-		ctx.fillStyle = '#020617';
-		ctx.fillRect(8, -16, 8, 32);
 		ctx.restore();
+		drawCabBody(x, y, angle, '#dc2626');
 	}
 
 	function glow(x, y, radius, color) {
@@ -278,7 +342,7 @@
 		ctx.fill();
 	}
 
-	initGame();
+	initGame(0);
 
 	// Real elapsed time, capped so a backgrounded tab does not resume with one enormous step
 	// that tunnels the rig straight through a parked truck.
