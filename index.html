@@ -95,7 +95,7 @@
 	<div id="preset-bar"></div>
 	<div id="preset-stats"></div>
 	<div id="controls-hint">
-		<strong>Drive</strong> W / S &nbsp; <strong>Steer</strong> A / D &nbsp; <strong>Restart</strong> R &nbsp; <strong>Preset</strong> 1-5 &nbsp; <strong>Speed</strong> + / -<br>
+		<strong>Drive</strong> W / S &nbsp; <strong>Steer</strong> A / D &nbsp; <strong>Restart</strong> R &nbsp; <strong>Preset</strong> 1-5 &nbsp; <strong>Forward</strong> + / - &nbsp; <strong>Reverse</strong> [ / ]<br>
 		The wheel holds its angle — steer back to straighten. Reversing, the fold always grows; countersteer to hold it.
 	</div>
 
@@ -129,8 +129,10 @@
 
 	window.addEventListener('keydown', function (e) {
 		if (e.key === 'r' || e.key === 'R') return initGame(activePreset);
-		if (e.key === '+' || e.key === '=') { setSpeed(SPEED + 0.1); return initGame(activePreset); }
-		if (e.key === '-' || e.key === '_') { setSpeed(SPEED - 0.1); return initGame(activePreset); }
+		if (e.key === '+' || e.key === '=') { setFwd(FWD + 0.1); return initGame(activePreset); }
+		if (e.key === '-' || e.key === '_') { setFwd(FWD - 0.1); return initGame(activePreset); }
+		if (e.key === ']') { setRev(REV + 0.1); return initGame(activePreset); }
+		if (e.key === '[') { setRev(REV - 0.1); return initGame(activePreset); }
 		for (var i = 0; i < PRESETS.length; i++)
 			if (e.key === PRESETS[i].key) return initGame(i);
 		if (KEYMAP[e.key]) { keys[KEYMAP[e.key]] = true; e.preventDefault(); }
@@ -159,9 +161,11 @@
 			' &nbsp;·&nbsp; rig <b>' + st.rigLenPx.toFixed(0) + 'px</b><br>' +
 			'holding full lock going forward: <b>' +
 			(st.foldsForward ? 'jackknifes' : 'settles at ' + st.settlesAt.toFixed(0) + '°') + '</b>' +
-			' &nbsp;·&nbsp; speed <b>' + st.speed.toFixed(1) + '×</b>' +
-			' &nbsp;→&nbsp; forward <b>' + st.fwdKmh.toFixed(0) + ' km/h</b>,' +
-			' reversing <b>' + st.revKmh.toFixed(1) + ' km/h</b>';
+			'<br>forward <b>' + st.fwdKmh.toFixed(0) + ' km/h</b> (' + st.fwd.toFixed(1) + '× &nbsp;+ / -)' +
+			' &nbsp;·&nbsp; reversing <b>' + st.revKmh.toFixed(1) + ' km/h</b> (' + st.rev.toFixed(1) + '× &nbsp;[ / ])' +
+			' &nbsp;·&nbsp; fold clock <b>' +
+			(st.foldClock === null ? 'never folds' : st.foldClock.toFixed(1) + ' s') + '</b>' +
+			' — seconds of full-lock reversing before it jams';
 	}
 
 	function update(dt) {

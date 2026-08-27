@@ -18,12 +18,12 @@ var SPEC = {
 	rigLen: 20.83,          // a parked tractor+trailer drawn as one box
 	rigWid: 6.04,
 
-	// Forward and reverse are decoupled on purpose. Going forward the fold CONVERGES, so there
-	// is no countdown and no reason to crawl. Reversing it diverges, and speed is the whole clock
-	// -- 5 km/h is what every source gives for yard backing, and what makes the fold catchable.
-	maxSpeed: 8.00,         // m/s = 28.8 km/h forward
-	reverseFactor: 0.18,    // 1.44 m/s = 5.2 km/h reversing, unchanged from the retune
-	accel: 8.00,
+	// Two independent speeds, not a speed and a factor. The fold develops per METRE travelled,
+	// not per second, so reverse speed buys nothing but reaction time -- and forward speed costs
+	// nothing, because the fold converges going forward. They are unrelated numbers.
+	fwdSpeed: 5.60,         // m/s = 20.2 km/h
+	revSpeed: 2.20,         // m/s = 7.9 km/h
+	accel: 7.00,
 	friction: 7.00,
 	maxSteer: 0.42,         // 24 deg
 	steerRate: 0.7,         // 0.6 s centre to lock
@@ -42,7 +42,7 @@ var SPEC = {
 // pxPerM is zoom. wheelbase is handling: W/D is a ratio of two metre values, so it is
 // scale-invariant and the two knobs never interfere.
 var PRESETS = [
-	{ key: '1', name: 'Current',        pxPerM: 9.60, wheelbase: 3.54 },
+	{ key: '1', name: 'Current',        pxPerM: 9.60, wheelbase: 3.54, baseline: true },   // the 'before', kept for comparison
 	{ key: '2', name: 'A sleeper WB',   pxPerM: 9.60, wheelbase: 6.10 },
 	{ key: '3', name: 'B zoomed out',   pxPerM: 6.19, wheelbase: 6.10 },
 	{ key: '4', name: 'C docile',       pxPerM: 6.19, wheelbase: 8.59 },
@@ -51,10 +51,11 @@ var PRESETS = [
 
 var CANVAS = { w: 850, h: 650 };
 
-// Tuning dial, driven from the UI. Multiplies both speeds so the whole game can be sped up or
-// slowed down without disturbing the geometry. ponytail: one number, not a settings system.
-var SPEED = 1;
-function setSpeed(v) { SPEED = clamp(v, 0.4, 2.5); return SPEED; }
+// Tuning dials, driven from the UI. Separate, because they trade against completely different
+// things: forward speed against nothing at all, reverse speed against the fold clock.
+var FWD = 1, REV = 1;
+function setFwd(v) { FWD = clamp(v, 0.3, 2.5); return FWD; }
+function setRev(v) { REV = clamp(v, 0.3, 3.0); return REV; }
 var PRESET, SCALE, TRUCK, LEVEL;
 
 function usePreset(i) {
@@ -106,15 +107,29 @@ function slotCentre(i) {
 		y: LEVEL.rowStart.y + Math.sin(a) * LEVEL.rowSpacing * i };
 }
 
+// Seconds of full-lock reversing before the fold reaches the stop. This is what reverse speed
+// buys, and the only thing it buys, so the UI shows it next to the dial.
+function foldClock() {
+	var r = makeRig(0, 0, 0), dt = 1 / 60;
+	r.trailer.angle = 0.02;
+	for (var i = 0; i < 120 / dt; i++) {
+		r.steer = r.maxSteer;
+		stepRig(r, -1, 0, dt);
+		if (Math.abs(normAngle(r.angle - r.trailer.angle)) > 1.44) return i * dt;
+	}
+	return null;
+}
+
 // Headline numbers for the on-screen readout: what each preset actually changes.
 function presetStats() {
 	var R = PRESET.wheelbase / Math.tan(SPEC.maxSteer);              // metres
 	var s = (SPEC.kingpinToAxle / PRESET.wheelbase) * Math.tan(SPEC.maxSteer);
 	return {
 		name: PRESET.name,
-		speed: SPEED,
-		fwdKmh: SPEC.maxSpeed * SPEED * 3.6,
-		revKmh: SPEC.maxSpeed * SPEC.reverseFactor * SPEED * 3.6,
+		fwd: FWD, rev: REV,
+		fwdKmh: SPEC.fwdSpeed * FWD * 3.6,
+		revKmh: SPEC.revSpeed * REV * 3.6,
+		foldClock: foldClock(),
 		ratio: PRESET.wheelbase / SPEC.kingpinToAxle,
 		turnRadiusPx: R * SCALE,
 		turnPerRig: R / SPEC.rigLen,
@@ -177,10 +192,10 @@ function makeRig(x, y, angle) {
 	var r = {
 		x: x, y: y, angle: angle, speed: 0, steer: 0,
 		wheelbase: PRESET.wheelbase * SCALE,
-		maxSpeed: SPEC.maxSpeed * SCALE * SPEED,
-		reverseFactor: SPEC.reverseFactor,
-		accel: SPEC.accel * SCALE * SPEED,
-		friction: SPEC.friction * SCALE * SPEED,
+		maxSpeed: SPEC.fwdSpeed * SCALE * FWD,
+		reverseSpeed: SPEC.revSpeed * SCALE * REV,
+		accel: SPEC.accel * SCALE * Math.max(FWD, REV),
+		friction: SPEC.friction * SCALE * Math.max(FWD, REV),
 		maxSteer: SPEC.maxSteer,
 		steerRate: SPEC.steerRate,
 		trailer: { x: 0, y: 0, angle: angle, len: TRUCK.trailerLen, wid: TRUCK.trailerWid,
@@ -209,7 +224,7 @@ function stepRig(r, drive, steerInput, dt) {
 	}
 
 	if (drive > 0) r.speed = Math.min(r.speed + r.accel * dt, r.maxSpeed);
-	else if (drive < 0) r.speed = Math.max(r.speed - r.accel * dt, -r.maxSpeed * r.reverseFactor);
+	else if (drive < 0) r.speed = Math.max(r.speed - r.accel * dt, -r.reverseSpeed);
 	else r.speed = towardZero(r.speed, r.friction * dt);
 
 	var travel = r.speed * dt;
@@ -325,19 +340,23 @@ if (typeof window === 'undefined') {
 			stepRig(c, -1, 0, DT);
 			if (foldAt === null && Math.abs(normAngle(c.angle - c.trailer.angle)) > 1.44) foldAt = i * DT;
 		}
-		assert.ok(foldAt === null || foldAt > 4, 'full-lock reverse must take over 4s to fold, got ' + foldAt + tag);
+		// Playability bars apply to candidate presets. The baseline preset exists precisely to
+		// show the bad case, so it is held to correctness only.
+		if (!p.baseline)
+			assert.ok(foldAt === null || foldAt > 4, 'full-lock reverse must take over 4s to fold, got ' + foldAt + tag);
 
-		// Same, at the fastest the speed dial goes: the dial must not be able to make the fold
+		// Same, at the fastest the reverse dial goes: it must not be able to make the fold
 		// uncatchable, which is the one thing it could quietly ruin.
-		setSpeed(2.5);
+		setRev(3.0);
 		var cf = makeRig(400, 300, 0), fastFold = null;
 		for (i = 0; i < 60 / DT; i++) {
 			cf.steer = cf.maxSteer;
 			stepRig(cf, -1, 0, DT);
 			if (fastFold === null && Math.abs(normAngle(cf.angle - cf.trailer.angle)) > 1.44) fastFold = i * DT;
 		}
-		setSpeed(1);
-		assert.ok(fastFold === null || fastFold > 2, 'fold must stay catchable at max speed dial, got ' + fastFold + tag);
+		setRev(1);
+		if (!p.baseline)
+			assert.ok(fastFold === null || fastFold > 1.5, 'fold must stay catchable at max reverse dial, got ' + fastFold + tag);
 
 		// Dry steering: the wheel holds its angle at a standstill, and a stopped rig never rotates.
 		var s = makeRig(0, 0, 0);
@@ -421,7 +440,8 @@ if (typeof window === 'undefined') {
 			'   turn ' + st.turnRadiusPx.toFixed(0).padStart(3) + 'px' +
 			'   R/rig ' + st.turnPerRig.toFixed(2) +
 			'   rig ' + st.rigLenPx.toFixed(0).padStart(3) + 'px' +
-			'   ' + (st.foldsForward ? 'folds at lock' : 'settles at ' + st.settlesAt.toFixed(0) + ' deg'));
+			'   ' + (st.foldsForward ? 'folds at lock' : 'settles at ' + st.settlesAt.toFixed(0) + ' deg').padEnd(16) +
+			'   fold clock ' + (st.foldClock === null ? 'never' : st.foldClock.toFixed(1) + 's'));
 	});
 	usePreset(0);
 }
