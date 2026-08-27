@@ -18,10 +18,13 @@ var SPEC = {
 	rigLen: 20.83,          // a parked tractor+trailer drawn as one box
 	rigWid: 6.04,
 
-	maxSpeed: 4.69,         // m/s = 16.9 km/h forward
-	reverseFactor: 0.30,    // 5.1 km/h reversing: yard creep, which is what sets the fold clock
-	accel: 6.25,
-	friction: 5.73,
+	// Forward and reverse are decoupled on purpose. Going forward the fold CONVERGES, so there
+	// is no countdown and no reason to crawl. Reversing it diverges, and speed is the whole clock
+	// -- 5 km/h is what every source gives for yard backing, and what makes the fold catchable.
+	maxSpeed: 8.00,         // m/s = 28.8 km/h forward
+	reverseFactor: 0.18,    // 1.44 m/s = 5.2 km/h reversing, unchanged from the retune
+	accel: 8.00,
+	friction: 7.00,
 	maxSteer: 0.42,         // 24 deg
 	steerRate: 0.7,         // 0.6 s centre to lock
 
@@ -47,6 +50,11 @@ var PRESETS = [
 ];
 
 var CANVAS = { w: 850, h: 650 };
+
+// Tuning dial, driven from the UI. Multiplies both speeds so the whole game can be sped up or
+// slowed down without disturbing the geometry. ponytail: one number, not a settings system.
+var SPEED = 1;
+function setSpeed(v) { SPEED = clamp(v, 0.4, 2.5); return SPEED; }
 var PRESET, SCALE, TRUCK, LEVEL;
 
 function usePreset(i) {
@@ -104,6 +112,9 @@ function presetStats() {
 	var s = (SPEC.kingpinToAxle / PRESET.wheelbase) * Math.tan(SPEC.maxSteer);
 	return {
 		name: PRESET.name,
+		speed: SPEED,
+		fwdKmh: SPEC.maxSpeed * SPEED * 3.6,
+		revKmh: SPEC.maxSpeed * SPEC.reverseFactor * SPEED * 3.6,
 		ratio: PRESET.wheelbase / SPEC.kingpinToAxle,
 		turnRadiusPx: R * SCALE,
 		turnPerRig: R / SPEC.rigLen,
@@ -166,10 +177,10 @@ function makeRig(x, y, angle) {
 	var r = {
 		x: x, y: y, angle: angle, speed: 0, steer: 0,
 		wheelbase: PRESET.wheelbase * SCALE,
-		maxSpeed: SPEC.maxSpeed * SCALE,
+		maxSpeed: SPEC.maxSpeed * SCALE * SPEED,
 		reverseFactor: SPEC.reverseFactor,
-		accel: SPEC.accel * SCALE,
-		friction: SPEC.friction * SCALE,
+		accel: SPEC.accel * SCALE * SPEED,
+		friction: SPEC.friction * SCALE * SPEED,
 		maxSteer: SPEC.maxSteer,
 		steerRate: SPEC.steerRate,
 		trailer: { x: 0, y: 0, angle: angle, len: TRUCK.trailerLen, wid: TRUCK.trailerWid,
@@ -315,6 +326,18 @@ if (typeof window === 'undefined') {
 			if (foldAt === null && Math.abs(normAngle(c.angle - c.trailer.angle)) > 1.44) foldAt = i * DT;
 		}
 		assert.ok(foldAt === null || foldAt > 4, 'full-lock reverse must take over 4s to fold, got ' + foldAt + tag);
+
+		// Same, at the fastest the speed dial goes: the dial must not be able to make the fold
+		// uncatchable, which is the one thing it could quietly ruin.
+		setSpeed(2.5);
+		var cf = makeRig(400, 300, 0), fastFold = null;
+		for (i = 0; i < 60 / DT; i++) {
+			cf.steer = cf.maxSteer;
+			stepRig(cf, -1, 0, DT);
+			if (fastFold === null && Math.abs(normAngle(cf.angle - cf.trailer.angle)) > 1.44) fastFold = i * DT;
+		}
+		setSpeed(1);
+		assert.ok(fastFold === null || fastFold > 2, 'fold must stay catchable at max speed dial, got ' + fastFold + tag);
 
 		// Dry steering: the wheel holds its angle at a standstill, and a stopped rig never rotates.
 		var s = makeRig(0, 0, 0);
