@@ -82,3 +82,33 @@ the tracked point and the trailer equation is exact:
 Forward that converges — the trailer tracks. Reverse it diverges. That instability is the game.
 
 One convention throughout: local `+x` is forward, and `angle` is the direction the nose points.
+
+## Open decisions
+
+**1. Trailer-direction steering in reverse.** The player's whole question is "if I reverse now,
+which way does the trailer's back end go?" Four on-screen cues were tried and stacked into
+noise. The alternative is to remove the question rather than answer it: in reverse, `A`/`D`
+mean *send the trailer left / right* and the game solves for the wheel angle, the way Ford's
+Pro Trailer Backup Assist knob works. We already have the formula, `δ = atan((W/D)·sin γ)`.
+
+If built, it should land as a toggle against the classic scheme, and the HUD wheel bar and the
+nose wedge probably come out with it. Classic counter-steering stays for a hard mode, next to
+`JACKKNIFE_ENDS_RUN`.
+
+**2. Whether the HUD wheel bar can go.** The nose wedge measures 1.69px per degree against the
+bar's 1.33, so it should be redundant. Untested by a human.
+
+**3. Is the lot solvable?** The geometry is verified — nothing overlaps, everything is on
+screen, the bay is reachable in principle. Nobody has parked in it yet.
+
+**4. Reference-photo work, not started.** Cracked asphalt with tyre scuffs (the biggest visual
+gap to the drone footage), worn rather than crisp bay markings, and the rig is drawn ~1.6x too
+wide for its length.
+
+## Notes
+
+- `~/Downloads/trucker-refs` holds 714MB of manufacturer body-builder manuals, kept only in
+  case the rig geometry is revisited. Safe to delete otherwise. They were downloaded into a
+  tmpfs `/tmp` and had to be moved out because they were eating RAM.
+- There is a stale copy of the game published as a claude.ai artifact from before GitHub Pages
+  worked. It should be retired; this repo is the only source of truth.
