@@ -82,7 +82,7 @@
 		<canvas id="canvas" width="850" height="650"></canvas>
 		<div id="ui-overlay">
 			<div class="stat-box">Shifts: <span id="gear-shifts" style="color:#f43f5e">0</span></div>
-			<div class="stat-box">Wheel<span class="wheel-track"><i id="wheel-fill"></i></span></div>
+			<div class="stat-box"><span id="steer-mode">Wheel</span><span class="wheel-track"><i id="wheel-fill"></i></span></div>
 			<div class="stat-box">Spot Alignment: <span id="alignment-pct" style="color:#38bdf8">0%</span></div>
 		</div>
 		<div id="modal">
@@ -95,8 +95,10 @@
 	<div id="preset-bar"></div>
 	<div id="preset-stats"></div>
 	<div id="controls-hint">
-		<strong>Drive</strong> W / S &nbsp; <strong>Steer</strong> A / D &nbsp; <strong>Restart</strong> R &nbsp; <strong>Preset</strong> 1-5 &nbsp; <strong>Forward</strong> + / - &nbsp; <strong>Reverse</strong> [ / ]<br>
-		The wedge at the nose is the wheel angle.<br>The wheel holds its angle — steer back to straighten. Reversing, the fold always grows; countersteer to hold it.
+		<strong>Drive</strong> W / S &nbsp; <strong>Steer</strong> A / D &nbsp; <strong>Restart</strong> R &nbsp; <strong>Preset</strong> 1-3 &nbsp; <strong>Forward</strong> + / - &nbsp; <strong>Reverse</strong> [ / ]<br>
+		<strong>Trailer steering</strong> T — <span id="mode-state">off: A / D turn the wheel</span><br>
+		Classic: the wheel holds its angle — steer back to straighten. Reversing, the fold always grows; countersteer to hold it.<br>
+		Trailer steering: reversing, A / D send the trailer left / right and the truck works the wheel out. It will not let you jackknife.
 	</div>
 
 <script src="core.js"></script>
@@ -106,6 +108,8 @@
 	var gearShiftsEl = document.getElementById('gear-shifts');
 	var alignmentEl = document.getElementById('alignment-pct');
 	var wheelFill = document.getElementById('wheel-fill');
+	var steerModeEl = document.getElementById('steer-mode');
+	var modeStateEl = document.getElementById('mode-state');
 	var modal = document.getElementById('modal');
 	var modalTitle = document.getElementById('modal-title');
 	var modalDesc = document.getElementById('modal-desc');
@@ -129,6 +133,9 @@
 
 	window.addEventListener('keydown', function (e) {
 		if (e.key === 'r' || e.key === 'R') return initGame(activePreset);
+		// Mid-run, deliberately: the two schemes are only comparable if you can flip between them
+		// on the same approach to the same bay.
+		if (e.key === 't' || e.key === 'T') return setTrailerSteer(!TRAILER_STEER);
 		if (e.key === '+' || e.key === '=') { setFwd(FWD + 0.1); return initGame(activePreset); }
 		if (e.key === '-' || e.key === '_') { setFwd(FWD - 0.1); return initGame(activePreset); }
 		if (e.key === ']') { setRev(REV + 0.1); return initGame(activePreset); }
@@ -239,11 +246,22 @@
 		var nose = TRUCK.cabLen * 0.18;
 		drawCab(rig.x + Math.cos(rig.angle) * nose, rig.y + Math.sin(rig.angle) * nose, rig.angle, rig.steer);
 
-		drawSteerWedge();
+		// No wedge while the machine has the wheel: the wedge answers "where is the wheel", and
+		// under the assist that is not the player's question any more. Their answer is the trailer
+		// itself turning. ponytail: nothing new drawn to replace it -- the point of the scheme is
+		// to remove the question, and a fourth cue would smuggle it back in.
+		if (!rig.assisting) drawSteerWedge();
 
-		var f = rig.steer / rig.maxSteer;
+		// The bar shows whatever A / D are currently commanding: the wheel, or the trailer. Right
+		// is a NEGATIVE fold, so the sign flips to keep right filling right.
+		var f = rig.assisting ? -rig.targetFold / rig.maxFold : rig.steer / rig.maxSteer;
+		steerModeEl.innerText = rig.assisting ? 'Trailer' : 'Wheel';
+		wheelFill.style.background = rig.assisting ? '#a3e635' : '#38bdf8';
 		wheelFill.style.left = (f < 0 ? 50 + f * 50 : 50) + '%';
 		wheelFill.style.width = Math.abs(f) * 50 + '%';
+		modeStateEl.innerText = TRAILER_STEER
+			? 'on: A / D send the trailer, the truck steers'
+			: 'off: A / D turn the wheel';
 
 		glow(150, 100, 180, 'rgba(251,191,36,.08)');
 		glow(650, 100, 180, 'rgba(251,191,36,.08)');

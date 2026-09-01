@@ -45,6 +45,9 @@ sandbox.PRESETS.forEach(function (p, pi) {
 	assert.ok(sandbox.rig && !sandbox.isGameOver, 'preset switch must leave a live rig' + tag);
 
 	for (var i = 0; i < 900; i++) {
+		// Half the run under trailer-direction steering, and the flip happens mid-reverse: the
+		// scheme change is a live toggle, so the handover is the part worth driving through.
+		sandbox.setTrailerSteer(i > 450);
 		var q = pressed[Math.floor(i / 150) % pressed.length];
 		sandbox.keys.up = !!q.up; sandbox.keys.down = !!q.down;
 		sandbox.keys.left = !!q.left; sandbox.keys.right = !!q.right;
@@ -57,6 +60,7 @@ sandbox.PRESETS.forEach(function (p, pi) {
 
 	// A rig placed correctly in the bay and stopped must register as parked, at every zoom --
 	// the win tolerance scales with the rig, so a fixed pixel tolerance would silently break here.
+	sandbox.setTrailerSteer(false);
 	sandbox.initGame(pi);
 	sandbox.rig.trailer.angle = sandbox.lot.bay.angle;
 	sandbox.rig.trailer.x = sandbox.lot.bay.trailerX;

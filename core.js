@@ -123,14 +123,16 @@ function slotCentre(i, side) {
 // Seconds of full-lock reversing before the fold reaches the stop. This is what reverse speed
 // buys, and the only thing it buys, so the UI shows it next to the dial.
 function foldClock() {
-	var r = makeRig(0, 0, 0), dt = 1 / 60;
+	var r = makeRig(0, 0, 0), dt = 1 / 60, was = TRAILER_STEER, at = null;
+	TRAILER_STEER = false;      // this is the CLASSIC scheme's number; the assist would hold the wheel
 	r.trailer.angle = 0.02;
-	for (var i = 0; i < 120 / dt; i++) {
+	for (var i = 0; i < 120 / dt && at === null; i++) {
 		r.steer = r.maxSteer;
 		stepRig(r, -1, 0, dt);
-		if (Math.abs(normAngle(r.angle - r.trailer.angle)) > 1.44) return i * dt;
+		if (Math.abs(normAngle(r.angle - r.trailer.angle)) > 1.44) at = i * dt;
 	}
-	return null;
+	TRAILER_STEER = was;
+	return at;
 }
 
 // Headline numbers for the on-screen readout: what each preset actually changes.
@@ -201,6 +203,23 @@ function intersects(a, b) {
 var MAX_ARTICULATION = 1.45;        // ~83 degrees, then the cab is into the trailer nose
 var JACKKNIFE_ENDS_RUN = false;     // ponytail: one flag, not a mode system. Extra-hard flips it.
 
+// Trailer-direction steering. Reversing, A/D say where the TRAILER goes and the game solves the
+// wheel angle -- the trailer-backup knob, rather than the counter-steering the knob replaced.
+// A held fold IS a trailer turn rate, since d(trailerAngle)/d(travel) = sin(fold)/D. So the
+// command is a fold angle, and holding one needs the SAME equilibrium that decides whether a held
+// wheel settles going forward:  tan(steer) = (W/D) * sin(fold).
+// The error term closes the gap to the commanded fold, and saturates at full lock -- which is
+// where classic countersteering would have had you anyway.
+var TRAILER_STEER = false;
+var FOLD_GAIN = 2.5;                // ponytail: the error closes over D/GAIN of travel. Tuned by feel.
+// Reversing, a fold only unwinds while the wheel has authority left over it, and at the tightest
+// HOLDABLE fold that authority is exactly zero -- full lock holds it and nothing shrinks it, so
+// the only way out is to pull forward. That is a jackknife by another name, and the whole promise
+// of the assist is that you cannot get into one. So the command stops short of the limit and keeps
+// the rest as unwind authority. It costs about a quarter of the trailer's tightest turn.
+var FOLD_HEADROOM = 0.8;
+function setTrailerSteer(on) { TRAILER_STEER = !!on; return TRAILER_STEER; }
+
 function makeRig(x, y, angle) {
 	var r = {
 		x: x, y: y, angle: angle, speed: 0, steer: 0,
@@ -214,6 +233,12 @@ function makeRig(x, y, angle) {
 		trailer: { x: 0, y: 0, angle: angle, len: TRUCK.trailerLen, wid: TRUCK.trailerWid,
 			kingpinToAxle: SPEC.kingpinToAxle * SCALE }
 	};
+	// The tightest fold the wheel can hold: sin(fold) = (D/W) tan(maxSteer). It is the same number
+	// the preset readout calls "settles at", the forward equilibrium seen from the other direction.
+	var hold = (SPEC.kingpinToAxle / PRESET.wheelbase) * Math.tan(SPEC.maxSteer);
+	r.maxFold = Math.asin(Math.min(1, hold) * FOLD_HEADROOM);
+	r.targetFold = 0;
+	r.assisting = false;
 	syncTrailer(r);
 	return r;
 }
@@ -227,13 +252,33 @@ function syncTrailer(r) {
 function stepRig(r, drive, steerInput, dt) {
 	if (!(dt > 0)) throw new Error('stepRig needs a timestep in seconds, got ' + dt);
 
-	// The wheel is a position, not a nudge: it holds wherever you leave it, at any speed, and
-	// you cancel a turn by steering back. Nothing springs to centre on its own.
-	if (steerInput) {
-		r.steer = clamp(r.steer + steerInput * r.steerRate * dt, -r.maxSteer, r.maxSteer);
-		// Detent, so centre is findable by feel: land within half a step of zero and you get
-		// exactly zero. It costs one frame passing through, it never blocks steering past it.
-		if (Math.abs(r.steer) < r.steerRate * dt * 0.5) r.steer = 0;
+	var fold = normAngle(r.angle - r.trailer.angle);
+	// The assist only exists where the question does: not driving forward. Forward the trailer
+	// just follows, so there is nothing to aim and the wheel goes back to being the wheel.
+	// Stopped counts as assisted: you aim the trailer first, then reverse, knob-first like the
+	// real thing -- and the solved wheel angle is visible on the steer axle before you move.
+	r.assisting = TRAILER_STEER && r.speed <= 0;
+
+	if (r.assisting) {
+		// Right sends the trailer clockwise, which is a NEGATIVE fold -- the same way classic
+		// countersteering eventually takes it, so a key means the same thing in both schemes.
+		if (steerInput) {
+			r.targetFold = clamp(r.targetFold - steerInput * r.steerRate * dt, -r.maxFold, r.maxFold);
+			if (Math.abs(r.targetFold) < r.steerRate * dt * 0.5) r.targetFold = 0;   // detent, as on the wheel
+		}
+		r.steer = clamp(Math.atan((r.wheelbase / r.trailer.kingpinToAxle) *
+			(Math.sin(fold) - FOLD_GAIN * (r.targetFold - fold))), -r.maxSteer, r.maxSteer);
+	} else {
+		// Pick the command up from wherever the rig actually is, so engaging mid-fold never snaps.
+		r.targetFold = clamp(fold, -r.maxFold, r.maxFold);
+		// The wheel is a position, not a nudge: it holds wherever you leave it, at any speed, and
+		// you cancel a turn by steering back. Nothing springs to centre on its own.
+		if (steerInput) {
+			r.steer = clamp(r.steer + steerInput * r.steerRate * dt, -r.maxSteer, r.maxSteer);
+			// Detent, so centre is findable by feel: land within half a step of zero and you get
+			// exactly zero. It costs one frame passing through, it never blocks steering past it.
+			if (Math.abs(r.steer) < r.steerRate * dt * 0.5) r.steer = 0;
+		}
 	}
 
 	if (drive > 0) r.speed = Math.min(r.speed + r.accel * dt, r.maxSpeed);
@@ -410,6 +455,53 @@ if (typeof window === 'undefined') {
 				'fold must stay inside the limit' + tag);
 		}
 		assert.ok(sawOvershoot, 'stepRig must report articulation past the limit' + tag);
+
+		// Trailer-direction steering. The property that matters is the OPPOSITE of the one above:
+		// under the assist a held direction must SETTLE the fold on the commanded angle instead of
+		// running away, at every preset, and it must never reach the jackknife stop.
+		setTrailerSteer(true);
+		var ts = makeRig(400, 300, 0), worstFold = 0;
+		for (i = 0; i < 12 / DT; i++) {
+			stepRig(ts, -1, 1, DT);
+			worstFold = Math.max(worstFold, Math.abs(normAngle(ts.angle - ts.trailer.angle)));
+		}
+		assert.strictEqual(ts.targetFold, -ts.maxFold, 'holding right must wind the command to the stop' + tag);
+		assert.ok(Math.abs(normAngle(ts.angle - ts.trailer.angle) - ts.targetFold) < 0.05,
+			'the fold must settle on the commanded angle, got ' +
+			normAngle(ts.angle - ts.trailer.angle).toFixed(3) + ' for ' + ts.targetFold.toFixed(3) + tag);
+		assert.ok(worstFold < MAX_ARTICULATION, 'the assist must never reach the fold stop' + tag);
+
+		// Right sends the trailer clockwise -- the same way classic countersteering takes it, so
+		// the key does not change meaning when the scheme does.
+		var was = ts.trailer.angle;
+		stepRig(ts, -1, 0, DT);
+		assert.ok(normAngle(ts.trailer.angle - was) > 0, 'right must swing the trailer clockwise' + tag);
+
+		// And the fold must UNWIND on the way back, in reverse, without pulling forward. This is
+		// what the headroom buys: at the tightest holdable fold the wheel has no authority left
+		// and left would do nothing at all.
+		for (i = 0; i < 30 / DT; i++) stepRig(ts, -1, -1, DT);
+		assert.ok(normAngle(ts.angle - ts.trailer.angle) > 0.3,
+			'left must unwind the fold in reverse, got ' +
+			normAngle(ts.angle - ts.trailer.angle).toFixed(3) + tag);
+
+		// Engaging mid-fold must adopt the fold it finds, so the TRAILER never lurches. The wheel
+		// does jump, to the angle that holds that fold -- that is the machine taking the wheel,
+		// and it is on screen on the steer axle.
+		var mid = makeRig(400, 300, 0);
+		setTrailerSteer(false);
+		mid.trailer.angle = -0.25;      // inside every preset's cap; a wider fold clamps to it and unwinds
+		stepRig(mid, -1, 0, DT);
+		setTrailerSteer(true);
+		stepRig(mid, -1, 0, DT);
+		assert.ok(Math.abs(mid.targetFold - normAngle(mid.angle - mid.trailer.angle)) < 0.02,
+			'engaging the assist must adopt the fold it finds' + tag);
+
+		// Forward is untouched: the assist is a reverse-only scheme, and A/D is still the wheel.
+		var fw = makeRig(400, 300, 0);
+		for (i = 0; i < 1 / DT; i++) stepRig(fw, 1, 1, DT);
+		assert.ok(fw.steer > 0 && !fw.assisting, 'forward must stay classic under the assist' + tag);
+		setTrailerSteer(false);
 
 		// No NaN anywhere.
 		var n = makeRig(LEVEL.start.x, LEVEL.start.y, LEVEL.start.angle);
