@@ -31,25 +31,27 @@ var SPEC = {
 	maxSteer: 0.42,         // 24 deg
 	steerRate: 0.7,         // 0.6 s centre to lock
 
+	// Two rows facing each other across a drive lane, 90 degree back-in, packed tight -- the
+	// layout every reference photo of an overnight truck stop actually shows.
+	// laneWidth is a multiple of the TURNING CIRCLE, not a typed-in number, so the lot stays
+	// solvable if the rig geometry changes again.
 	lot: {
-		parkHeading: 0.673,
-		rowStart: { x: 26.04, y: 50.00 },
-		rowSpacing: 6.458,
-		rowCount: 7,
-		targetSlot: 3,
-		extra: [{ x: 26.04, y: 62.29, angle: 0 }, { x: 66.67, y: 62.29, angle: 0 }],
-		start: { x: 66.67, y: 52.08, angle: 2.244 }
+		laneTurnRadii: 1.75,    // lane width as a multiple of the rig's turn radius
+		rowPitch: 6.46,         // 6.04m rigs: 42cm of daylight between neighbours
+		slots: 9,
+		targetSlot: 4,
+		firstSlotY: 15
 	}
 };
 
 // pxPerM is zoom. wheelbase is handling: W/D is a ratio of two metre values, so it is
 // scale-invariant and the two knobs never interfere.
+// The two 9.60 px/m presets are gone. They were baselines for choosing a zoom, that choice is
+// made, and the lot the reference photos actually show does not fit on screen at that scale.
 var PRESETS = [
-	{ key: '1', name: 'Current',        pxPerM: 9.60, wheelbase: 3.54, baseline: true },   // the 'before', kept for comparison
-	{ key: '2', name: 'A sleeper WB',   pxPerM: 9.60, wheelbase: 6.10 },
-	{ key: '3', name: 'B zoomed out',   pxPerM: 6.19, wheelbase: 6.10 },
-	{ key: '4', name: 'C docile',       pxPerM: 6.19, wheelbase: 8.59 },
-	{ key: '5', name: 'D very docile',  pxPerM: 6.19, wheelbase: 12.29 }
+	{ key: '1', name: 'Standard', pxPerM: 6.19, wheelbase: 6.10 },
+	{ key: '2', name: 'Forgiving', pxPerM: 6.19, wheelbase: 8.59 },
+	{ key: '3', name: 'Very forgiving', pxPerM: 6.19, wheelbase: 12.29 }
 ];
 
 var CANVAS = { w: 850, h: 650 };
@@ -72,14 +74,20 @@ function usePreset(i) {
 		cabLen: m(SPEC.cabLen), cabWid: m(SPEC.cabWid),
 		rigLen: m(SPEC.rigLen), rigWid: m(SPEC.rigWid) };
 
-	var L = SPEC.lot, i2;
-	LEVEL = { parkHeading: L.parkHeading, rowSpacing: m(L.rowSpacing),
-		rowCount: L.rowCount, targetSlot: L.targetSlot,
-		rowStart: { x: m(L.rowStart.x), y: m(L.rowStart.y) },
-		extra: [], start: { x: m(L.start.x), y: m(L.start.y), angle: L.start.angle } };
-	for (i2 = 0; i2 < L.extra.length; i2++)
-		LEVEL.extra.push({ x: m(L.extra[i2].x), y: m(L.extra[i2].y), angle: L.extra[i2].angle });
-
+	var L = SPEC.lot;
+	var lane = L.laneTurnRadii * (PRESET.wheelbase / Math.tan(SPEC.maxSteer));   // metres
+	var laneCentre = 40;
+	LEVEL = {
+		slots: L.slots, targetSlot: L.targetSlot,
+		rowPitch: m(L.rowPitch),
+		firstSlotY: m(L.firstSlotY),
+		laneCentreX: m(laneCentre),
+		// Rows sit either side of the lane, noses pointing into it: you back in, cab last.
+		leftX: m(laneCentre - lane / 2 - SPEC.rigLen / 2),
+		rightX: m(laneCentre + lane / 2 + SPEC.rigLen / 2),
+		// Start at the lane's far end, pointing up it, so the bay must be passed and reversed into.
+		start: { x: m(laneCentre), y: m(L.firstSlotY + (L.slots + 1.5) * L.rowPitch), angle: -Math.PI / 2 }
+	};
 	centreLot();
 	return PRESET;
 }
@@ -87,8 +95,7 @@ function usePreset(i) {
 // Zooming out leaves the lot hugging one corner. Shift it so every preset is framed the same.
 function centreLot() {
 	var pts = [LEVEL.start], i, j, c;
-	for (i = 0; i < LEVEL.rowCount; i++) pts.push(slotCentre(i));
-	for (i = 0; i < LEVEL.extra.length; i++) pts.push(LEVEL.extra[i]);
+	for (i = 0; i < LEVEL.slots; i++) { pts.push(slotCentre(i, 0)); pts.push(slotCentre(i, 1)); }
 	var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 	for (i = 0; i < pts.length; i++) {
 		c = getBoxCorners(pts[i].x, pts[i].y, TRUCK.rigLen, TRUCK.rigWid,
@@ -101,42 +108,16 @@ function centreLot() {
 		}
 	}
 	var dx = (CANVAS.w - (maxX - minX)) / 2 - minX, dy = (CANVAS.h - (maxY - minY)) / 2 - minY;
-	LEVEL.rowStart.x += dx; LEVEL.rowStart.y += dy;
+	LEVEL.leftX += dx; LEVEL.rightX += dx; LEVEL.laneCentreX += dx;
+	LEVEL.firstSlotY += dy;
 	LEVEL.start.x += dx; LEVEL.start.y += dy;
-	for (i = 0; i < LEVEL.extra.length; i++) { LEVEL.extra[i].x += dx; LEVEL.extra[i].y += dy; }
 }
 
-function slotCentre(i) {
-	var a = LEVEL.parkHeading - Math.PI / 2;
-	return { x: LEVEL.rowStart.x + Math.cos(a) * LEVEL.rowSpacing * i,
-		y: LEVEL.rowStart.y + Math.sin(a) * LEVEL.rowSpacing * i };
-}
-
-// Where the trailer's tail actually goes if the wheel is held and the rig reverses.
-// This steps the REAL model rather than extrapolating a constant-curvature arc, because a
-// reversing rig essentially never reaches steady state -- an instantaneous-curvature arc is
-// wrong exactly in the first moments of a manoeuvre, which is when it is being read.
-// 16 steps reproduces the true path to under 1px over a 60px projection.
-function projectTrailerPath(r, distance, steps) {
-	var c = {
-		x: r.x, y: r.y, angle: r.angle, steer: r.steer, speed: -Math.abs(r.reverseSpeed),
-		wheelbase: r.wheelbase, maxSpeed: r.maxSpeed, reverseSpeed: r.reverseSpeed,
-		accel: r.accel, friction: r.friction, maxSteer: r.maxSteer, steerRate: r.steerRate,
-		trailer: { x: r.trailer.x, y: r.trailer.y, angle: r.trailer.angle,
-			len: r.trailer.len, wid: r.trailer.wid, kingpinToAxle: r.trailer.kingpinToAxle }
-	};
-	// Returns trailer POSES, not tail points. The tail's own locus corkscrews once the fold
-	// starts accelerating -- correct, and unreadable. Where the box ends up is the useful answer.
-	var dt = (distance / steps) / Math.abs(c.speed);
-	var out = [], i, art;
-	for (i = 0; i < steps; i++) {
-		art = stepRig(c, -1, 0, dt);
-		out.push({ x: c.trailer.x, y: c.trailer.y, angle: c.trailer.angle,
-			fold: Math.abs(art) / MAX_ARTICULATION });
-		// Past this the rig is committed to the stop and every further pose is the same jackknife.
-		if (Math.abs(art) / MAX_ARTICULATION > 0.85) break;
-	}
-	return out;
+// side 0 = left row facing east, side 1 = right row facing west. Noses point into the lane.
+function slotCentre(i, side) {
+	return { x: side ? LEVEL.rightX : LEVEL.leftX,
+		y: LEVEL.firstSlotY + LEVEL.rowPitch * i,
+		angle: side ? Math.PI : 0 };
 }
 
 // Seconds of full-lock reversing before the fold reaches the stop. This is what reverse speed
@@ -289,21 +270,20 @@ function rigBoxes(r) {
 // --- level -----------------------------------------------------------------
 
 function buildLot() {
-	var h = LEVEL.parkHeading;
-	var fwd = { x: Math.cos(h), y: Math.sin(h) };
-	var parked = [], bay = null, i, back = TRUCK.rigLen / 2 - TRUCK.trailerLen / 2;
+	var parked = [], bay = null, i, side, back = TRUCK.rigLen / 2 - TRUCK.trailerLen / 2;
 
-	for (i = 0; i < LEVEL.rowCount; i++) {
-		var c = slotCentre(i);
-		if (i === LEVEL.targetSlot) {
-			// The player's trailer parks against the back of the bay, cab left sticking out.
-			bay = { x: c.x, y: c.y, angle: h,
-				trailerX: c.x - fwd.x * back, trailerY: c.y - fwd.y * back };
-		} else {
-			parked.push({ x: c.x, y: c.y, angle: h });
+	for (side = 0; side < 2; side++) {
+		for (i = 0; i < LEVEL.slots; i++) {
+			var c = slotCentre(i, side);
+			if (side === 0 && i === LEVEL.targetSlot) {
+				// The player's trailer parks against the back of the bay, cab left sticking out.
+				bay = { x: c.x, y: c.y, angle: c.angle,
+					trailerX: c.x - Math.cos(c.angle) * back, trailerY: c.y - Math.sin(c.angle) * back };
+			} else {
+				parked.push(c);
+			}
 		}
 	}
-	for (i = 0; i < LEVEL.extra.length; i++) parked.push(LEVEL.extra[i]);
 
 	var walls = [
 		{ x: 0, y: 0, w: CANVAS.w, h: 15 }, { x: 0, y: CANVAS.h - 15, w: CANVAS.w, h: 15 },
@@ -372,12 +352,9 @@ if (typeof window === 'undefined') {
 			stepRig(c, -1, 0, DT);
 			if (foldAt === null && Math.abs(normAngle(c.angle - c.trailer.angle)) > 1.44) foldAt = i * DT;
 		}
-		// Playability bars apply to candidate presets. The baseline preset exists precisely to
-		// show the bad case, so it is held to correctness only.
 		// 2.5s, not 4s: the 4s bar was my own guess, and a faster reverse was explicitly wanted.
 		// This still catches the 1.1s original that made the game unplayable in the first place.
-		if (!p.baseline)
-			assert.ok(foldAt === null || foldAt > 2.5, 'full-lock reverse must take over 2.5s to fold, got ' + foldAt + tag);
+		assert.ok(foldAt === null || foldAt > 2.5, 'full-lock reverse must take over 2.5s to fold, got ' + foldAt + tag);
 
 		// Same, at the fastest the reverse dial goes: it must not be able to make the fold
 		// uncatchable, which is the one thing it could quietly ruin.
@@ -389,8 +366,7 @@ if (typeof window === 'undefined') {
 			if (fastFold === null && Math.abs(normAngle(cf.angle - cf.trailer.angle)) > 1.44) fastFold = i * DT;
 		}
 		setRev(1);
-		if (!p.baseline)
-			assert.ok(fastFold === null || fastFold > 1.5, 'fold must stay catchable at max reverse dial, got ' + fastFold + tag);
+		assert.ok(fastFold === null || fastFold > 1.5, 'fold must stay catchable at max reverse dial, got ' + fastFold + tag);
 
 		// Dry steering: the wheel holds its angle at a standstill, and a stopped rig never rotates.
 		var s = makeRig(0, 0, 0);

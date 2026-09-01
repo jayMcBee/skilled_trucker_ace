@@ -95,8 +95,8 @@
 	<div id="preset-bar"></div>
 	<div id="preset-stats"></div>
 	<div id="controls-hint">
-		<strong>Drive</strong> W / S &nbsp; <strong>Steer</strong> A / D &nbsp; <strong>Restart</strong> R &nbsp; <strong>Preset</strong> 1-5 &nbsp; <strong>Forward</strong> + / - &nbsp; <strong>Reverse</strong> [ / ] &nbsp; <strong>Path</strong> P<br>
-		The wedge at the nose is the wheel angle. The line off the trailer is where its tail will go if you reverse.<br>The wheel holds its angle — steer back to straighten. Reversing, the fold always grows; countersteer to hold it.
+		<strong>Drive</strong> W / S &nbsp; <strong>Steer</strong> A / D &nbsp; <strong>Restart</strong> R &nbsp; <strong>Preset</strong> 1-5 &nbsp; <strong>Forward</strong> + / - &nbsp; <strong>Reverse</strong> [ / ]<br>
+		The wedge at the nose is the wheel angle.<br>The wheel holds its angle — steer back to straighten. Reversing, the fold always grows; countersteer to hold it.
 	</div>
 
 <script src="core.js"></script>
@@ -118,7 +118,7 @@
 		ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right'
 	};
 
-	var rig, lot, obstacleBoxes, shifts, lastDir, isGameOver, activePreset = 0, showPath = true;
+	var rig, lot, obstacleBoxes, shifts, lastDir, isGameOver, activePreset = 0;
 
 	PRESETS.forEach(function (p, i) {
 		var b = document.createElement('button');
@@ -131,7 +131,6 @@
 		if (e.key === 'r' || e.key === 'R') return initGame(activePreset);
 		if (e.key === '+' || e.key === '=') { setFwd(FWD + 0.1); return initGame(activePreset); }
 		if (e.key === '-' || e.key === '_') { setFwd(FWD - 0.1); return initGame(activePreset); }
-		if (e.key === 'p' || e.key === 'P') { showPath = !showPath; return; }
 		if (e.key === ']') { setRev(REV + 0.1); return initGame(activePreset); }
 		if (e.key === '[') { setRev(REV - 0.1); return initGame(activePreset); }
 		for (var i = 0; i < PRESETS.length; i++)
@@ -240,7 +239,6 @@
 		var nose = TRUCK.cabLen * 0.18;
 		drawCab(rig.x + Math.cos(rig.angle) * nose, rig.y + Math.sin(rig.angle) * nose, rig.angle, rig.steer);
 
-		if (showPath) drawTrailerPath();
 		drawSteerWedge();
 
 		var f = rig.steer / rig.maxSteer;
@@ -364,41 +362,6 @@
 			ctx.lineTo(ox + Math.cos(a2) * reach, oy + Math.sin(a2) * reach);
 			ctx.stroke();
 		});
-	}
-
-	// Ghost outlines of where the trailer ends up if you hold this wheel and reverse. Three
-	// boxes, not a line: the tail's own path corkscrews once the fold accelerates, which is
-	// correct and completely unreadable. A ghost of the box is what a person can actually act on.
-	function drawTrailerPath() {
-		var st = presetStats();
-		var reach = 0.65 * (st.foldClock === null ? 4 : st.foldClock) * rig.reverseSpeed;
-		var poses = projectTrailerPath(rig, reach, 18);
-		if (!poses.length) return;
-
-		[0.34, 0.67, 1].forEach(function (frac, n) {
-			var p = poses[Math.min(poses.length - 1, Math.round(frac * (poses.length - 1)))];
-			// Escalate as the fold nears the stop, landing on the fail colour when it is
-			// no longer recoverable. Same shape Ford, GM and Ram all use.
-			var col = p.fold > 0.8 ? '#f43f5e' : (p.fold > 0.6 ? '#fb923c' : '#38bdf8');
-			var c = getBoxCorners(p.x, p.y, TRUCK.trailerLen, TRUCK.trailerWid, p.angle);
-
-			ctx.globalAlpha = 0.55 - n * 0.13;
-			ctx.strokeStyle = 'rgba(2,6,23,.8)';
-			ctx.lineWidth = Math.max(3, TRUCK.trailerWid * 0.13);
-			outline(c);
-			ctx.strokeStyle = col;
-			ctx.lineWidth = Math.max(1.2, TRUCK.trailerWid * 0.055);
-			outline(c);
-		});
-		ctx.globalAlpha = 1;
-	}
-
-	function outline(c) {
-		ctx.beginPath();
-		ctx.moveTo(c[0].x, c[0].y);
-		for (var i = 1; i < 4; i++) ctx.lineTo(c[i].x, c[i].y);
-		ctx.closePath();
-		ctx.stroke();
 	}
 
 	// The steered wheels ARE the steering readout, so they are drawn last, oversized, and set
