@@ -108,6 +108,16 @@ the tracked point and the trailer equation is exact:
 
 Forward that converges — the trailer tracks. Reverse it diverges. That instability is the game.
 
+Collision shapes are the shapes on screen, and that is asserted rather than assumed. A parked rig
+collides as two boxes, a trailer and a cab, exactly as `drawParkedRig` draws it — the offsets live
+in `parkedBoxes()` in `core.js` and the page draws from the same arithmetic. It used to collide as
+one box `rigLen × rigWid`, and `rigWid` is 1.66m wider than the widest thing drawn, so every parked
+truck carried an invisible 0.83m kill zone down each side: a run could end with 5px of daylight
+still on screen. Clearance beside the target bay went from 7.74px real against 12.88px apparent, to
+12.88px both. An obstacle wider than its own picture is invisible by construction — no screenshot
+and no playtest can see it — so the self-check now measures every parked box against the dimensions
+it is drawn at.
+
 Both axles roll: neither can move sideways. That is the constraint the model exists to satisfy, and
 the self-check measures it directly, because the one place it was violated was invisible in every
 other test. Clamping the fold angle at the 83° limit left the trailer rotating about the kingpin at
@@ -154,9 +164,17 @@ mode, next to `JACKKNIFE_ENDS_RUN`, unless it turns out nobody wants it.
 bar's 1.33, so it should be redundant. Untested by a human.
 
 **3. Is the lot solvable?** The geometry is verified — nothing overlaps, everything is on
-screen, the bay is reachable in principle. Nobody has parked in it yet.
+screen, the bay is reachable in principle. Nobody has parked in it yet. It got materially roomier
+when the invisible collision margin went: 12.88px of clearance each side of the bay, up from 7.74px.
 
-**4. Reference-photo work, not started.** Cracked asphalt with tyre scuffs (the biggest visual
+**4. Known geometry defect, not yet fixed: `centreLot` bounds the player's start pose as a
+`rigLen × rigWid` box about the tracked point.** The real rig runs 16.15m behind that point and
+3.11m ahead, so the framing arithmetic is wrong by 35.5px and the start clears the bottom wall by
+23px more or less by luck. The framing is lopsided as a result — 58.5px above the lot, 204.2px
+below. Fixing it re-frames every preset, which is why it is waiting: it is a visible change, and
+the self-check would catch the failure it guards against anyway.
+
+**5. Reference-photo work, not started.** Cracked asphalt with tyre scuffs (the biggest visual
 gap to the drone footage), worn rather than crisp bay markings, and the rig is drawn ~1.6x too
 wide for its length.
 

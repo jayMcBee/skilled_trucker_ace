@@ -239,7 +239,7 @@
 		var trailerColors = ['#f8fafc', '#e2e8f0', '#cbd5e1', '#f1f5f9'];
 		var cabColors = ['#dc2626', '#3b82f6', '#f59e0b', '#10b981', '#6366f1', '#e2e8f0'];
 		lot.parked.forEach(function (p, i) {
-			drawParkedRig(p.x, p.y, p.angle, trailerColors[i % trailerColors.length], cabColors[i % cabColors.length]);
+			drawParkedRig(p, trailerColors[i % trailerColors.length], cabColors[i % cabColors.length]);
 		});
 
 		ctx.fillStyle = '#1e293b';
@@ -318,13 +318,14 @@
 		ctx.restore();
 	}
 
-	// A parked rig is one box: trailer across the rear, cab on the nose.
-	function drawParkedRig(x, y, angle, trailerColor, cabColor) {
-		var fx = Math.cos(angle), fy = Math.sin(angle);
+	// A parked rig is a trailer across the rear and a cab on the nose. The offsets live in core.js
+	// as parkedBoxes(), which is what collision uses, so the picture and the collision cannot drift.
+	function drawParkedRig(p, trailerColor, cabColor) {
+		var fx = Math.cos(p.angle), fy = Math.sin(p.angle);
 		var back = TRUCK.rigLen / 2 - TRUCK.trailerLen / 2;
 		var front = TRUCK.rigLen / 2 - TRUCK.cabLen / 2;
-		drawTrailer(x - fx * back, y - fy * back, angle, trailerColor, false);
-		drawCabBody(x + fx * front, y + fy * front, angle, cabColor);
+		drawTrailer(p.x - fx * back, p.y - fy * back, p.angle, trailerColor, false);
+		drawCabBody(p.x + fx * front, p.y + fy * front, p.angle, cabColor);
 	}
 
 	function drawCabBody(x, y, angle, color) {

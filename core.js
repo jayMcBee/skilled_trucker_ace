@@ -308,10 +308,25 @@ function buildLot() {
 	return { bay: bay, parked: parked, walls: walls };
 }
 
+// A parked rig collides as the two boxes it is DRAWN as: a trailer and a cab, mirroring rigBoxes
+// for the player. It used to be one box rigLen x rigWid, and rigWid is 1.66m wider than the widest
+// thing drawn -- so every parked truck carried an invisible 0.83m kill zone down each side and a
+// run could end with 5px of daylight still visible on screen. index.html draws from this same
+// function's arithmetic, so the two cannot drift apart again.
+function parkedBoxes(p) {
+	var fx = Math.cos(p.angle), fy = Math.sin(p.angle);
+	var back = TRUCK.rigLen / 2 - TRUCK.trailerLen / 2;
+	var front = TRUCK.rigLen / 2 - TRUCK.cabLen / 2;
+	return [
+		getBoxCorners(p.x - fx * back, p.y - fy * back, TRUCK.trailerLen, TRUCK.trailerWid, p.angle),
+		getBoxCorners(p.x + fx * front, p.y + fy * front, TRUCK.cabLen, TRUCK.cabWid, p.angle)
+	];
+}
+
+// Parked boxes first, then walls: the self-check relies on that order to tell them apart.
 function lotObstacles(lot) {
 	var out = [], i;
-	for (i = 0; i < lot.parked.length; i++)
-		out.push(getBoxCorners(lot.parked[i].x, lot.parked[i].y, TRUCK.rigLen, TRUCK.rigWid, lot.parked[i].angle));
+	for (i = 0; i < lot.parked.length; i++) out = out.concat(parkedBoxes(lot.parked[i]));
 	for (i = 0; i < lot.walls.length; i++)
 		out.push(aabbCorners(lot.walls[i].x, lot.walls[i].y, lot.walls[i].w, lot.walls[i].h));
 	return out;
@@ -500,7 +515,8 @@ if (typeof window === 'undefined') {
 		// The lot must not park trucks inside each other, the player must not start in one, and a
 		// trailer sitting correctly in the bay must not overlap anything.
 		var lot = buildLot(), obs = lotObstacles(lot);
-		for (i = 0; i < lot.parked.length; i++)          // walls legitimately overlap at the corners
+		var nParked = lot.parked.length * 2;             // two boxes each: trailer, then cab
+		for (i = 0; i < nParked; i++)                    // walls legitimately overlap at the corners
 			for (j = i + 1; j < obs.length; j++)
 				assert.ok(!intersects(obs[i], obs[j]), 'lot obstacles ' + i + ' and ' + j + ' overlap' + tag);
 
@@ -512,8 +528,22 @@ if (typeof window === 'undefined') {
 		var inBay = getBoxCorners(lot.bay.trailerX, lot.bay.trailerY, TRUCK.trailerLen, TRUCK.trailerWid, lot.bay.angle);
 		obs.forEach(function (o, mi) { assert.ok(!intersects(inBay, o), 'parked-in-bay trailer overlaps obstacle ' + mi + tag); });
 
+		// Every parked box must be a box that is actually DRAWN. An obstacle wider than its own
+		// picture is invisible by construction: no screenshot, no playtest and no other assertion
+		// here can see it, which is how a 0.83m kill zone survived from the first playable commit.
+		lot.parked.forEach(function (p, pk) {
+			parkedBoxes(p).forEach(function (box, bi) {
+				var wid = Math.hypot(box[1].x - box[2].x, box[1].y - box[2].y);
+				var len = Math.hypot(box[0].x - box[1].x, box[0].y - box[1].y);
+				var want = bi === 0 ? [TRUCK.trailerLen, TRUCK.trailerWid] : [TRUCK.cabLen, TRUCK.cabWid];
+				assert.ok(Math.abs(len - want[0]) < 1e-9 && Math.abs(wid - want[1]) < 1e-9,
+					'parked box ' + bi + ' of truck ' + pk + ' is ' + len.toFixed(2) + 'x' + wid.toFixed(2) +
+					', drawn as ' + want[0].toFixed(2) + 'x' + want[1].toFixed(2) + tag);
+			});
+		});
+
 		// And the whole lot must actually be on screen at this zoom.
-		obs.slice(0, lot.parked.length).forEach(function (o, mi) {
+		obs.slice(0, nParked).forEach(function (o, mi) {
 			o.forEach(function (pt) {
 				assert.ok(pt.x > -1 && pt.x < CANVAS.w + 1 && pt.y > -1 && pt.y < CANVAS.h + 1,
 					'parked truck ' + mi + ' falls outside the canvas' + tag);
