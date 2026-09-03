@@ -135,8 +135,7 @@ function foldClock() {
 	r.trailer.angle = 0.02;
 	for (var i = 0; i < 120 / dt; i++) {
 		r.steer = r.maxSteer;
-		stepRig(r, -1, 0, dt);
-		if (Math.abs(normAngle(r.angle - r.trailer.angle)) > 1.44) return i * dt;
+		if (Math.abs(stepRig(r, -1, 0, dt)) > MAX_ARTICULATION) return i * dt;
 	}
 	return null;
 }
@@ -248,19 +247,26 @@ function stepRig(r, drive, steerInput, dt) {
 	else if (drive < 0) r.speed = Math.max(r.speed - r.accel * dt, -r.reverseSpeed);
 	else r.speed = towardZero(r.speed, r.friction * dt);
 
+	var t = r.trailer;
+	var wasX = r.x, wasY = r.y, wasAngle = r.angle, wasTrailer = t.angle;
+
 	var travel = r.speed * dt;
 	r.angle = normAngle(r.angle + (travel / r.wheelbase) * Math.tan(r.steer));
 	r.x += Math.cos(r.angle) * travel;
 	r.y += Math.sin(r.angle) * travel;
-
-	var t = r.trailer;
 	t.angle = normAngle(t.angle + (travel / t.kingpinToAxle) * Math.sin(r.angle - t.angle));
 
-	// The fold always stops dead at the physical limit, so the cab can never pass through the
-	// trailer. Whether reaching it also ends the run is the caller's call. The raw articulation
-	// is returned unclamped so the caller can still tell the limit was hit.
+	// At the limit the cab is against the trailer nose and the rig is JAMMED, so the whole step is
+	// refused. Clamping only the ANGLE was not enough: the trailer then rotated about the kingpin
+	// at the cab's rate, which dragged its own axle sideways at 77px/s -- twice the reverse speed,
+	// straight through the ground its wheels are standing on. Refusing the step stops everything
+	// instead, and pulling forward still works, since forward is the direction that unwinds the
+	// fold. The raw articulation is returned unclamped so the caller can still tell it jammed.
 	var art = normAngle(r.angle - t.angle);
-	if (Math.abs(art) > MAX_ARTICULATION) t.angle = normAngle(r.angle - (art < 0 ? -MAX_ARTICULATION : MAX_ARTICULATION));
+	if (Math.abs(art) > MAX_ARTICULATION) {
+		r.x = wasX; r.y = wasY; r.angle = wasAngle; t.angle = wasTrailer;
+		r.speed = 0;
+	}
 	syncTrailer(r);
 
 	return art;
@@ -354,11 +360,11 @@ if (typeof window === 'undefined') {
 
 		// And the fold must stay slow enough to be catchable. Under about 4 seconds there is no
 		// time to react, which is what made the old 22 km/h reverse unplayable.
-		var c = makeRig(400, 300, 0), foldAt = null;
+		var c = makeRig(400, 300, 0), foldAt = null, cArt;
 		for (i = 0; i < 60 / DT; i++) {
 			c.steer = c.maxSteer;
-			stepRig(c, -1, 0, DT);
-			if (foldAt === null && Math.abs(normAngle(c.angle - c.trailer.angle)) > 1.44) foldAt = i * DT;
+			cArt = Math.abs(stepRig(c, -1, 0, DT));
+			if (foldAt === null && cArt > MAX_ARTICULATION) foldAt = i * DT;
 		}
 		// 2.2s, not 4s and no longer 2.5s. Both earlier bars were guesses, and both were set when
 		// braking was 0.7g and the truck slid 17px after you released the key. It now stops in
@@ -372,8 +378,7 @@ if (typeof window === 'undefined') {
 		var cf = makeRig(400, 300, 0), fastFold = null;
 		for (i = 0; i < 60 / DT; i++) {
 			cf.steer = cf.maxSteer;
-			stepRig(cf, -1, 0, DT);
-			if (fastFold === null && Math.abs(normAngle(cf.angle - cf.trailer.angle)) > 1.44) fastFold = i * DT;
+			if (fastFold === null && Math.abs(stepRig(cf, -1, 0, DT)) > MAX_ARTICULATION) fastFold = i * DT;
 		}
 		setRev(1);
 		assert.ok(fastFold === null || fastFold > 1.5, 'fold must stay catchable at max reverse dial, got ' + fastFold + tag);
@@ -431,6 +436,42 @@ if (typeof window === 'undefined') {
 		assert.ok(Math.abs(st2.x - stopFrom) < gap * 1.6,
 			'coast to a stop must fit 1.6x the gap between parked trucks, got ' +
 			Math.abs(st2.x - stopFrom).toFixed(1) + 'px against ' + gap.toFixed(1) + 'px' + tag);
+
+		// A wheel on the ground cannot move sideways. The trailer's axle must never slip
+		// perpendicular to its own heading -- not while manoeuvring, and above all not while
+		// jammed at the fold stop, where clamping the angle alone used to rotate the trailer about
+		// the kingpin and drag its axle sideways at 77px/s, twice the reverse speed. Held wheel,
+		// full reverse, straight into the stop and then eight seconds sitting on it.
+		var sl = makeRig(400, 300, 0), D = sl.trailer.kingpinToAxle, worstSlip = 0, slip;
+		var axleAt = function (q) {
+			return { x: q.x - Math.cos(q.trailer.angle) * D, y: q.y - Math.sin(q.trailer.angle) * D };
+		};
+		var prevAxle = axleAt(sl), nowAxle;
+		for (i = 0; i < 8 / DT; i++) {
+			stepRig(sl, -1, 1, DT);
+			nowAxle = axleAt(sl);
+			slip = Math.abs(-Math.sin(sl.trailer.angle) * (nowAxle.x - prevAxle.x) +
+				Math.cos(sl.trailer.angle) * (nowAxle.y - prevAxle.y)) / DT;
+			if (slip > worstSlip) worstSlip = slip;
+			prevAxle = nowAxle;
+		}
+		// Normal manoeuvring shows 0.2px/s of discretisation noise. 1px/s is clear of that and
+		// nowhere near the 77px/s the bug produced.
+		assert.ok(worstSlip < 1, 'the trailer axle must not slip sideways, got ' +
+			worstSlip.toFixed(1) + 'px/s' + tag);
+
+		// And the jam must be a jam: sitting on the stop under full reverse, nothing moves at all.
+		var jam = makeRig(400, 300, 0);
+		for (i = 0; i < 8 / DT; i++) stepRig(jam, -1, 1, DT);
+		var jamX = jam.x, jamY = jam.y, jamA = jam.angle;
+		for (i = 0; i < 2 / DT; i++) stepRig(jam, -1, 1, DT);
+		assert.ok(Math.hypot(jam.x - jamX, jam.y - jamY) < 0.01 && Math.abs(jam.angle - jamA) < 1e-9,
+			'a jammed rig must not creep' + tag);
+
+		// Pulling forward must still get you out of it. Forward is the direction that unwinds.
+		for (i = 0; i < 3 / DT; i++) stepRig(jam, 1, 0, DT);
+		assert.ok(Math.abs(normAngle(jam.angle - jam.trailer.angle)) < 1.2,
+			'pulling forward must unjam the fold' + tag);
 
 		// No NaN anywhere.
 		var n = makeRig(LEVEL.start.x, LEVEL.start.y, LEVEL.start.angle);

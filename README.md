@@ -5,9 +5,10 @@ Inspired by the drone footage of truck stops that circulates as "crazy trucker s
 
 **Fail early:** any scrape ends the run.
 
-Folding the cab into the trailer stops dead at 83 degrees rather than ending the run. Set
-`JACKKNIFE_ENDS_RUN = true` in `core.js` for the extra-hard version, where hitting that
-limit is a fail.
+Folding the cab into the trailer stops dead at 83 degrees rather than ending the run. The rig is
+then jammed: nothing moves at all until you pull forward, which is the one direction that unwinds
+the fold. Set `JACKKNIFE_ENDS_RUN = true` in `core.js` for the extra-hard version, where hitting
+that limit is a fail.
 
 ## Play
 
@@ -89,6 +90,9 @@ Asserts the separating-axis tests, that the trailer converges going forward and 
 reverse, that 600 steps stay NaN-free, that the level parks no truck inside another, and that
 releasing the key stops the truck inside 1.6x the gap between parked trucks.
 
+Also that the trailer's axle never slips sideways — under 1px/s against the 77px/s of the jackknife
+bug — that a jammed rig does not creep, and that pulling forward still unjams it.
+
 `smoke.js` now captures the page's key handlers and presses the keys. They used to be dropped into
 a noop, so a dead key looked exactly like a working one — which is how a mode shipped that did
 nothing visible while driving forward.
@@ -101,6 +105,14 @@ the tracked point and the trailer equation is exact:
     trailerAngle += (v / kingpinToAxle) * sin(cabAngle - trailerAngle)
 
 Forward that converges — the trailer tracks. Reverse it diverges. That instability is the game.
+
+Both axles roll: neither can move sideways. That is the constraint the model exists to satisfy, and
+the self-check measures it directly, because the one place it was violated was invisible in every
+other test. Clamping the fold angle at the 83° limit left the trailer rotating about the kingpin at
+the cab's rate, which dragged the trailer's own axle sideways at 77px/s — twice the reverse speed,
+straight through ground its wheels were standing on. The whole rig appeared to slide. The fix is to
+refuse the step rather than to bend the angle: at the limit the rig is jammed, and jammed means
+nothing moves.
 
 One convention throughout: local `+x` is forward, and `angle` is the direction the nose points.
 
