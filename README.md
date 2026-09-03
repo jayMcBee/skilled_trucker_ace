@@ -68,6 +68,13 @@ speeds, and acceleration scales with them so the ramp does not eat the gain:
 Forward is 40 km/h, doubled from 20, and it costs nothing: the fold converges going forward, so
 forward speed trades against nothing at all. That halves the drive to the bay, from 7.5s to 3.7s.
 
+Braking is set by the lot, not by physics. There is 42cm between parked trucks — 2.6px — and any
+scrape ends the run, so releasing the key has to stop the truck inside about that. It does not:
+`friction` is 2.9g, which no loaded semi can do, and it still takes 3.8px to stop from 32 km/h. A
+realistic 0.7g took 17px, six times the gap, which is what read as sluggish. Doubling the reverse
+speed had doubled that distance, since stopping distance goes as v². The self-check now asserts the
+stop fits twice the gap, so the next speed change cannot quietly undo it.
+
 ## Handling presets
 
 Keys `1`-`3`, or the buttons under the canvas, switch between rig configurations so handling

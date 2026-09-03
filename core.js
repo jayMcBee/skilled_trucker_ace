@@ -32,7 +32,12 @@ var SPEC = {
 	// actually reachable inside a half-length nudge.
 	assistRevSpeed: 8.80,   // m/s = 31.7 km/h
 	accel: 7.00,
-	friction: 7.00,
+	// Not a coast: a brake, at 2.9g, which no loaded semi can do. It is set by the LOT, not by
+	// physics. There is 42cm between parked trucks, 2.6px at this zoom, and any scrape ends the
+	// run -- so releasing the key has to stop the truck inside about that. At a realistic 0.7g the
+	// truck slid 17px after release, six times the gap, which is what read as sluggish. Doubling
+	// the reverse speed had doubled that distance, since it goes as v^2.
+	friction: 28.00,
 	maxSteer: 0.42,         // 24 deg
 	steerRate: 0.7,         // 0.6 s centre to lock
 
@@ -519,6 +524,19 @@ if (typeof window === 'undefined') {
 		var plod = makeRig(0, 0, 0);
 		for (i = 0; i < 3 / DT; i++) stepRig(plod, -1, 0, DT);
 		assert.ok(Math.abs(quick.x) > Math.abs(plod.x) * 1.5, 'the assist must reverse faster than classic' + tag);
+
+		// Releasing the key must stop the truck inside roughly the gap between parked trucks. This
+		// is the assertion that catches a speed change quietly ruining the stopping distance again.
+		setTrailerSteer(true);
+		var st2 = makeRig(0, 0, 0);
+		for (i = 0; i < 3 / DT; i++) stepRig(st2, -1, 0, DT);
+		var stopFrom = st2.x;
+		for (i = 0; i < 3 / DT && st2.speed !== 0; i++) stepRig(st2, 0, 0, DT);
+		var gap = (SPEC.lot.rowPitch - SPEC.rigWid) * SCALE;
+		assert.ok(Math.abs(st2.x - stopFrom) < gap * 2,
+			'coast to a stop must fit twice the gap between parked trucks, got ' +
+			Math.abs(st2.x - stopFrom).toFixed(1) + 'px against ' + gap.toFixed(1) + 'px' + tag);
+		setTrailerSteer(false);
 
 		// No NaN anywhere.
 		var n = makeRig(LEVEL.start.x, LEVEL.start.y, LEVEL.start.angle);
