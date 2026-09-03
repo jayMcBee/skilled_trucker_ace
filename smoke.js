@@ -44,6 +44,22 @@ assert.strictEqual(sandbox.presetBar.children.length, sandbox.PRESETS.length, 'e
 // a noop, so a dead key looked exactly like a working one.
 assert.ok(handlers.keydown && handlers.keydown.length, 'the page must bind a keydown handler');
 
+// Reversing at full lock into the fold stop must raise the jam flag and keep drawing, and pulling
+// forward must clear it. Without the flag, pushing reverse against the stop is indistinguishable
+// from a dead key: the step is refused, so absolutely nothing happens on screen.
+sandbox.initGame(0);
+sandbox.obstacleBoxes = [];      // the lot is tight enough that it crashes long before it folds
+sandbox.keys.down = true; sandbox.keys.right = true;
+for (var j = 0; j < 600 && !sandbox.isJammed; j++) { sandbox.update(1 / 60); sandbox.draw(); }
+assert.ok(sandbox.isJammed, 'reversing at full lock must raise the jam flag');
+assert.ok(!sandbox.isGameOver, 'a jam must not end the run');
+sandbox.draw();
+sandbox.keys.down = false; sandbox.keys.right = false; sandbox.keys.up = true;
+for (j = 0; j < 120; j++) sandbox.update(1 / 60);
+assert.ok(!sandbox.isJammed, 'pulling forward must clear the jam flag');
+sandbox.keys.up = false;
+sandbox.initGame(0);
+
 // R restarts, and the preset keys switch preset.
 sandbox.shifts = 7;
 press('r');

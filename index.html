@@ -119,7 +119,7 @@
 		ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right'
 	};
 
-	var rig, lot, obstacleBoxes, shifts, lastDir, isGameOver, activePreset = 0;
+	var rig, lot, obstacleBoxes, shifts, lastDir, isGameOver, isJammed, activePreset = 0;
 
 	PRESETS.forEach(function (p, i) {
 		var b = document.createElement('button');
@@ -147,7 +147,7 @@
 		lot = buildLot();
 		obstacleBoxes = lotObstacles(lot);
 		rig = makeRig(LEVEL.start.x, LEVEL.start.y, LEVEL.start.angle);
-		shifts = 0; lastDir = 0; isGameOver = false;
+		shifts = 0; lastDir = 0; isGameOver = false; isJammed = false;
 		gearShiftsEl.innerText = '0';
 		modal.classList.remove('active');
 
@@ -175,6 +175,12 @@
 		var drive = keys.up ? 1 : (keys.down ? -1 : 0);
 		var steer = keys.left ? -1 : (keys.right ? 1 : 0);
 		var articulation = stepRig(rig, drive, steer, dt);
+
+		// stepRig refuses the step at the fold limit, so pushing reverse there does nothing at all
+		// and there is no way to tell that from a stuck key. It reports the overshoot only on the
+		// frames you are actually pushing into the stop, which is exactly when the player needs
+		// telling. Releasing the key clears it: nothing is jamming any more, the rig is just bent.
+		isJammed = Math.abs(articulation) > MAX_ARTICULATION;
 
 		// Count a shift only when the rig actually reverses direction, not on key press.
 		var dir = rig.speed > 0.5 ? 1 : (rig.speed < -0.5 ? -1 : 0);
@@ -244,6 +250,7 @@
 		drawCab(rig.x + Math.cos(rig.angle) * nose, rig.y + Math.sin(rig.angle) * nose, rig.angle, rig.steer);
 
 		drawSteerWedge();
+		if (isJammed) drawJammed();
 
 		var f = rig.steer / rig.maxSteer;
 		wheelFill.style.left = (f < 0 ? 50 + f * 50 : 50) + '%';
@@ -252,6 +259,23 @@
 		glow(150, 100, 180, 'rgba(251,191,36,.08)');
 		glow(650, 100, 180, 'rgba(251,191,36,.08)');
 		glow(400, 550, 220, 'rgba(251,191,36,.06)');
+	}
+
+	// Not a crash: nothing has been hit and the run continues. So it says what to do instead of
+	// ending anything. Kept off the HUD and next to the truck, where you are already looking.
+	function drawJammed() {
+		var label = 'JAMMED — DRIVE FORWARD';
+		ctx.save();
+		ctx.font = '900 ' + Math.max(11, Math.round(TRUCK.rigWid * 0.26)) + 'px sans-serif';
+		ctx.textAlign = 'center';
+		var x = clamp(rig.x, 110, canvas.width - 110);
+		var y = clamp(rig.y - TRUCK.rigWid * 0.95, 26, canvas.height - 14);
+		ctx.lineWidth = 4;
+		ctx.strokeStyle = 'rgba(2,6,23,.9)';
+		ctx.strokeText(label, x, y);
+		ctx.fillStyle = '#fbbf24';
+		ctx.fillText(label, x, y);
+		ctx.restore();
 	}
 
 	function drawBay() {

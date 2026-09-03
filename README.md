@@ -7,7 +7,9 @@ Inspired by the drone footage of truck stops that circulates as "crazy trucker s
 
 Folding the cab into the trailer stops dead at 83 degrees rather than ending the run. The rig is
 then jammed: nothing moves at all until you pull forward, which is the one direction that unwinds
-the fold. Set `JACKKNIFE_ENDS_RUN = true` in `core.js` for the extra-hard version, where hitting
+the fold. **JAMMED — DRIVE FORWARD** appears beside the truck while you are pushing into the stop,
+because a refused step looks exactly like a dead key otherwise. It is not a crash and the run
+continues; releasing the key clears it. Set `JACKKNIFE_ENDS_RUN = true` in `core.js` for the extra-hard version, where hitting
 that limit is a fail.
 
 ## Play
