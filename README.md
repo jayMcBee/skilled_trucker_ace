@@ -13,7 +13,7 @@ limit is a fail.
 
 Open `index.html`. No build step, no dependencies.
 
-- **Drive** — `W`/`S` or `Up`/`Down`
+- **Drive** — `W`/`S` or `Up`/`Down`  (forward 40 km/h)
 - **Steer** — `A`/`D` or `Left`/`Right`
 - **Steering scheme** — `T`
 - **Restart** — `R`
@@ -21,7 +21,8 @@ Open `index.html`. No build step, no dependencies.
 ## Steering schemes
 
 `T` flips between them, mid-run and mid-manoeuvre, because they are only comparable on the same
-approach to the same bay.
+approach to the same bay. They reverse at different speeds, and the scheme is the reason: see
+*Speed*, below.
 
 **Classic.** `A`/`D` are the wheel. Reversing, the fold always grows and you countersteer against
 a clock.
@@ -47,6 +48,25 @@ the trailer's tightest turn:
 | 1 Standard | 64° | 46° | 106px, against a 129px rig |
 | 2 Forgiving | 40° | 31° | 149px |
 | 3 Very forgiving | 27° | 21° | 213px |
+
+## Speed
+
+The unit that matters is truck lengths per second, not km/h. At this zoom the truck is 129px and
+15.8 km/h is 27px/s: one truck length every 5 seconds, which reads as slow motion however fast the
+number sounds.
+
+Reverse speed is capped by the fold clock — how long full lock takes to jam — and *only the classic
+scheme pays that*. The assist cannot reach the fold stop at any speed, because the cap on its
+command is a per-travel property that speed cannot touch. So the two schemes reverse at different
+speeds, and acceleration scales with them so the ramp does not eat the gain:
+
+| | reverse | back up half a truck length | fold clock |
+|---|---|---|---|
+| trailer-direction | 32 km/h, 51 at the dial's top | 2.1s | cannot fold |
+| classic | 16 km/h, 25 at the dial's top | 3.3s | 3.0s |
+
+Forward is 40 km/h, doubled from 20, and it costs nothing: the fold converges going forward, so
+forward speed trades against nothing at all. That halves the drive to the bay, from 7.5s to 3.7s.
 
 ## Handling presets
 
@@ -122,7 +142,13 @@ One convention throughout: local `+x` is forward, and `angle` is the direction t
 ## Open decisions
 
 **1. Which scheme ships.** Trailer-direction steering is built, on `T`, against classic — see
-*Steering schemes*. Both work; nobody has decided which is the game. Three numbers in it were set
+*Steering schemes*. Both work; nobody has decided which is the game. The assist now reverses twice
+as fast, which is the second thing in its favour after not being able to jackknife.
+
+Still on the table, both rejected for now as not worth the code until the speed question settles:
+starting the truck 1.5 slots past the bay instead of 5.5, and giving acceleration its own dial
+(measured at 1x speed it takes a quarter-length nudge from 2.1s to 1.7s and does nothing to long
+moves). Three numbers in it were set
 by argument rather than by play, and are the things to change first if it feels wrong:
 
 - `FOLD_GAIN = 2.5` — how hard the assist chases the commanded fold. The error closes over

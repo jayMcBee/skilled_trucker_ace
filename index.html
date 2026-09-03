@@ -169,7 +169,8 @@
 			'holding full lock going forward: <b>' +
 			(st.foldsForward ? 'jackknifes' : 'settles at ' + st.settlesAt.toFixed(0) + '°') + '</b>' +
 			'<br>forward <b>' + st.fwdKmh.toFixed(0) + ' km/h</b> (' + st.fwd.toFixed(1) + '× &nbsp;+ / -)' +
-			' &nbsp;·&nbsp; reversing <b>' + st.revKmh.toFixed(1) + ' km/h</b> (' + st.rev.toFixed(1) + '× &nbsp;[ / ])' +
+			' &nbsp;·&nbsp; reversing <b>' + st.assistRevKmh.toFixed(0) + ' km/h</b> with trailer steering,' +
+			' <b>' + st.revKmh.toFixed(0) + ' km/h</b> without (' + st.rev.toFixed(1) + '× &nbsp;[ / ])' +
 			' &nbsp;·&nbsp; fold clock <b>' +
 			(st.foldClock === null ? 'never folds' : st.foldClock.toFixed(1) + ' s') + '</b>' +
 			' — seconds of full-lock reversing before it jams';

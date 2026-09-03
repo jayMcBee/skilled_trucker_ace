@@ -21,11 +21,16 @@ var SPEC = {
 	// Two independent speeds, not a speed and a factor. The fold develops per METRE travelled,
 	// not per second, so reverse speed buys nothing but reaction time -- and forward speed costs
 	// nothing, because the fold converges going forward. They are unrelated numbers.
-	fwdSpeed: 5.60,         // m/s = 20.2 km/h
+	fwdSpeed: 11.20,        // m/s = 40.3 km/h -- forward is free, the fold converges going forward
 	// Reverse was set from what real yard backing looks like, and rejected as slow motion at
 	// 5.1, 5.2 and 7.9 km/h. Realism loses: this is a casual game and reverse is most of it.
 	// The cost is the fold clock, which is on screen next to the dial rather than hidden.
-	revSpeed: 4.40,         // m/s = 15.8 km/h
+	revSpeed: 4.40,         // m/s = 15.8 km/h, and only the classic scheme is held to it
+	// The assist cannot fold, so the fold clock does not cap its reverse speed. 15.8 km/h is
+	// 27 px/s at this zoom: one truck length every 5 seconds, which reads as slow motion however
+	// fast the number sounds. Doubled, and the acceleration doubles with it so the extra speed is
+	// actually reachable inside a half-length nudge.
+	assistRevSpeed: 8.80,   // m/s = 31.7 km/h
 	accel: 7.00,
 	friction: 7.00,
 	maxSteer: 0.42,         // 24 deg
@@ -144,6 +149,7 @@ function presetStats() {
 		fwd: FWD, rev: REV,
 		fwdKmh: SPEC.fwdSpeed * FWD * 3.6,
 		revKmh: SPEC.revSpeed * REV * 3.6,
+		assistRevKmh: SPEC.assistRevSpeed * REV * 3.6,
 		foldClock: foldClock(),
 		ratio: PRESET.wheelbase / SPEC.kingpinToAxle,
 		turnRadiusPx: R * SCALE,
@@ -281,9 +287,12 @@ function stepRig(r, drive, steerInput, dt) {
 		}
 	}
 
+	// Reverse runs faster under the assist, and accelerates harder in the same proportion so the
+	// ramp does not eat the gain. Only the classic scheme pays the fold clock for speed.
+	var boost = r.assisting ? SPEC.assistRevSpeed / SPEC.revSpeed : 1;
 	if (drive > 0) r.speed = Math.min(r.speed + r.accel * dt, r.maxSpeed);
-	else if (drive < 0) r.speed = Math.max(r.speed - r.accel * dt, -r.reverseSpeed);
-	else r.speed = towardZero(r.speed, r.friction * dt);
+	else if (drive < 0) r.speed = Math.max(r.speed - r.accel * boost * dt, -r.reverseSpeed * boost);
+	else r.speed = towardZero(r.speed, r.friction * boost * dt);
 
 	var travel = r.speed * dt;
 	r.angle = normAngle(r.angle + (travel / r.wheelbase) * Math.tan(r.steer));
@@ -501,7 +510,15 @@ if (typeof window === 'undefined') {
 		var fw = makeRig(400, 300, 0);
 		for (i = 0; i < 1 / DT; i++) stepRig(fw, 1, 1, DT);
 		assert.ok(fw.steer > 0 && !fw.assisting, 'forward must stay classic under the assist' + tag);
+
+		// Reverse is faster under the assist, and only because the fold clock that caps the classic
+		// scheme does not apply to a scheme that cannot fold. Same three seconds, measured twice.
+		var quick = makeRig(0, 0, 0);
+		for (i = 0; i < 3 / DT; i++) stepRig(quick, -1, 0, DT);
 		setTrailerSteer(false);
+		var plod = makeRig(0, 0, 0);
+		for (i = 0; i < 3 / DT; i++) stepRig(plod, -1, 0, DT);
+		assert.ok(Math.abs(quick.x) > Math.abs(plod.x) * 1.5, 'the assist must reverse faster than classic' + tag);
 
 		// No NaN anywhere.
 		var n = makeRig(LEVEL.start.x, LEVEL.start.y, LEVEL.start.angle);
