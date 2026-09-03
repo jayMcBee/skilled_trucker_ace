@@ -440,9 +440,13 @@
 	requestAnimationFrame(function loop(now) {
 		var dt = lastFrame === null ? 1 / 60 : Math.min((now - lastFrame) / 1000, 1 / 30);
 		lastFrame = now;
-		update(dt);
-		draw();
+		// Reschedule FIRST. stepRig throws on a zero timestep by design, and two rAF callbacks can
+		// report the same timestamp -- Firefox's privacy.resistFingerprinting clamps them to 100ms,
+		// so most 60Hz frames there arrive with dt === 0. With the reschedule last, one such frame
+		// froze the game permanently: dead canvas, dead input, nothing on screen to say why.
 		requestAnimationFrame(loop);
+		if (dt > 0) update(dt);
+		draw();
 	});
 </script>
 </body>

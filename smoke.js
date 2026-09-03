@@ -25,7 +25,11 @@ function el() {
 // Capture the key handlers instead of dropping them. They were noop'd, so every key the page
 // binds was untested -- which is how T shipped with no visible effect while driving forward.
 var handlers = {};
-var sandbox = { document: { getElementById: el, createElement: el }, requestAnimationFrame: noop, console: console };
+// Capture the frame callback too. It was a noop, so the page's own game loop -- the thing that
+// decides the timestep and reschedules itself -- was the one part smoke.js could never run.
+var frames = [];
+var sandbox = { document: { getElementById: el, createElement: el }, console: console,
+	requestAnimationFrame: function (fn) { frames.push(fn); } };
 sandbox.window = sandbox;
 sandbox.window.addEventListener = function (type, fn) { (handlers[type] = handlers[type] || []).push(fn); };
 function press(k) { handlers.keydown.forEach(function (fn) { fn({ key: k, preventDefault: noop }); }); }
@@ -39,6 +43,23 @@ assert.ok(sandbox.rig, 'rig must exist after the page script runs');
 assert.ok(sandbox.lot && sandbox.lot.bay, 'lot must be built after the page script runs');
 assert.strictEqual(sandbox.isGameOver, false, 'must not start in a game-over state');
 assert.strictEqual(sandbox.presetBar.children.length, sandbox.PRESETS.length, 'every preset must get a button');
+
+// The game loop must survive a zero-length frame. stepRig throws on dt === 0 by design, and two
+// rAF callbacks CAN report the same timestamp -- Firefox's privacy.resistFingerprinting clamps
+// them to 100ms, so most 60Hz frames there arrive with dt === 0. The loop used to reschedule
+// itself LAST, so one such frame stopped the game permanently with nothing on screen to say why.
+assert.strictEqual(frames.length, 1, 'the page must schedule exactly one frame callback');
+var loop = frames[0];
+sandbox.keys.up = sandbox.keys.down = sandbox.keys.left = sandbox.keys.right = false;
+loop(1000);
+loop(1016);
+var scheduled = frames.length;
+loop(1016);                     // the same timestamp twice: dt === 0
+assert.ok(frames.length > scheduled, 'the loop must reschedule itself across a zero-length frame');
+loop(1032);
+assert.strictEqual(sandbox.isGameOver, false, 'a zero-length frame must not end the run');
+assert.ok(Number.isFinite(sandbox.rig.x) && Number.isFinite(sandbox.rig.trailer.angle),
+	'the rig must stay finite across a zero-length frame');
 
 // Every key the page binds must actually do something. These were untested: addEventListener was
 // a noop, so a dead key looked exactly like a working one.

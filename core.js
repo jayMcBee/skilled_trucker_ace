@@ -106,8 +106,7 @@ function centreLot() {
 	for (i = 0; i < LEVEL.slots; i++) { pts.push(slotCentre(i, 0)); pts.push(slotCentre(i, 1)); }
 	var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 	for (i = 0; i < pts.length; i++) {
-		c = getBoxCorners(pts[i].x, pts[i].y, TRUCK.rigLen, TRUCK.rigWid,
-			pts[i].angle === undefined ? LEVEL.parkHeading : pts[i].angle);
+		c = getBoxCorners(pts[i].x, pts[i].y, TRUCK.rigLen, TRUCK.rigWid, pts[i].angle);
 		for (j = 0; j < 4; j++) {
 			if (c[j].x < minX) minX = c[j].x;
 			if (c[j].x > maxX) maxX = c[j].x;
@@ -205,7 +204,10 @@ function intersects(a, b) {
 // no safe steering angle, only a countdown you countersteer against. Speed sets that clock.
 // Whether a held wheel settles at all going forward is decided by W/D, which is what the presets vary.
 
-var MAX_ARTICULATION = 1.45;        // ~83 degrees, then the cab is into the trailer nose
+// ~83 degrees. A tuned number, NOT derived from the boxes: the cab box and the trailer box overlap
+// at every fold angle including zero, since the kingpin sits inside the cab box and the trailer's
+// front edge is at the kingpin. Do not try to re-derive this from the geometry -- it yields zero.
+var MAX_ARTICULATION = 1.45;
 var JACKKNIFE_ENDS_RUN = false;     // ponytail: one flag, not a mode system. Extra-hard flips it.
 
 function makeRig(x, y, angle) {
@@ -455,10 +457,27 @@ if (typeof window === 'undefined') {
 			if (slip > worstSlip) worstSlip = slip;
 			prevAxle = nowAxle;
 		}
-		// Normal manoeuvring shows 0.2px/s of discretisation noise. 1px/s is clear of that and
-		// nowhere near the 77px/s the bug produced.
-		assert.ok(worstSlip < 1, 'the trailer axle must not slip sideways, got ' +
-			worstSlip.toFixed(1) + 'px/s' + tag);
+		// An absolute px/s bar would be a test of this loop's own DT: the same measure reads
+		// 1.06px/s for forward full lock at the 1/30 the game loop actually clamps to. What makes
+		// slip harmless is that it is discretisation, so it must SHRINK with the timestep. Real
+		// sideways slip does not shrink -- the jackknife bug sat at 77px/s at every dt.
+		var slipAt = function (step) {
+			var q = makeRig(400, 300, 0), worst = 0, pv = axleAt(q), nx, sp;
+			for (var n = 0; n < 8 / step; n++) {
+				stepRig(q, -1, 1, step);
+				nx = axleAt(q);
+				sp = Math.abs(-Math.sin(q.trailer.angle) * (nx.x - pv.x) +
+					Math.cos(q.trailer.angle) * (nx.y - pv.y)) / step;
+				if (sp > worst) worst = sp;
+				pv = nx;
+			}
+			return worst;
+		};
+		var slipCoarse = slipAt(1 / 30), slipFine = slipAt(1 / 240);
+		assert.ok(slipFine < slipCoarse * 0.35, 'axle slip must be discretisation and shrink with dt: ' +
+			slipCoarse.toFixed(2) + 'px/s at 1/30 vs ' + slipFine.toFixed(2) + 'px/s at 1/240' + tag);
+		assert.ok(worstSlip < 1, 'axle slip at 1/60 must stay under 1px/s, got ' +
+			worstSlip.toFixed(2) + 'px/s' + tag);
 
 		// And the jam must be a jam: sitting on the stop under full reverse, nothing moves at all.
 		var jam = makeRig(400, 300, 0);
