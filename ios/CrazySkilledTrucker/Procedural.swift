@@ -12,8 +12,9 @@ import UIKit
 import SpriteKit
 
 /// xorshift64*. Seeded, so cracks and scuffs land in the same place every launch and
-/// a screenshot can be compared with the last one.
-struct SeededRandom: RandomNumberGenerator
+/// a screenshot can be compared with the last one. A plain value with no shared
+/// state, so it stays off the main actor and conforms like any other generator.
+nonisolated struct SeededRandom: RandomNumberGenerator
 {
 	private var state: UInt64
 

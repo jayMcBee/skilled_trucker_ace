@@ -11,6 +11,7 @@
 //	==================================================
 
 import AVFoundation
+import Synchronization
 
 /// What the game tells the sound layer, once per frame.
 struct SoundState
@@ -46,25 +47,26 @@ struct AudioSessionSetup
 
 // MARK: - Synthesised
 
-/// Everything the render block reads and writes. The main thread writes the control
-/// values once per frame and the audio thread reads them each buffer.
-/// ponytail: plain stores, no atomics. Aligned Float and Int stores are single
-/// instructions on arm64, so the worst case is one buffer rendered with a value that
-/// is a frame stale. Move to Synchronization.Atomic if the target ever goes to iOS 18+.
-private final class SynthVoice
+/// Everything the render block reads and writes. The main thread stores the control
+/// values once per frame and the audio thread loads them each buffer, through
+/// atomics, so neither side ever waits. The one-shots are counters: the render block
+/// starts an envelope each time a counter moves.
+///
+/// Off the main actor on purpose: `render` runs on the real-time audio thread.
+nonisolated private final class SynthVoice: @unchecked Sendable
 {
-	// MARK: - Control values, written by the main thread
+	// MARK: - Control values, stored by the main thread, loaded on the audio thread
 
-	var speedFraction: Float = 0
-	var throttle: Float = 0
-	var isReversing = false
-	var crashTrigger = 0
-	var jamTrigger = 0
-	var hornTrigger = 0
+	let speedFraction = Atomic<Float>(0)
+	let throttle = Atomic<Float>(0)
+	let isReversing = Atomic<Bool>(false)
+	let crashTrigger = Atomic<Int>(0)
+	let jamTrigger = Atomic<Int>(0)
+	let hornTrigger = Atomic<Int>(0)
 
 	// MARK: - Render state, owned by the audio thread
 
-	var sampleRate: Float = 44100
+	private let sampleRate: Float
 	private var enginePhase: Float = 0
 	private var engineFrequency: Float = Constants.idleFrequency
 	private var engineGain: Float = 0
@@ -129,6 +131,13 @@ private final class SynthVoice
 		static let twoPi = Float.pi * 2
 	}
 
+	// MARK: - Init
+
+	init(sampleRate: Float)
+	{
+		self.sampleRate = sampleRate
+	}
+
 	// MARK: - Public API
 
 	func render(into bufferList: UnsafeMutablePointer<AudioBufferList>, frameCount: Int)
@@ -138,32 +147,39 @@ private final class SynthVoice
 			  let output = first.mData?.assumingMemoryBound(to: Float.self)
 		else { return }
 
-		if crashTrigger != seenCrashTrigger
+		let speed = speedFraction.load(ordering: .relaxed)
+		let throttleLevel = abs(throttle.load(ordering: .relaxed))
+		let reversing = isReversing.load(ordering: .relaxed)
+
+		let crashCount = crashTrigger.load(ordering: .relaxed)
+		if crashCount != seenCrashTrigger
 		{
-			seenCrashTrigger = crashTrigger
+			seenCrashTrigger = crashCount
 			crashEnvelope = 1
 			crashThumpPhase = 0
 		}
-		if jamTrigger != seenJamTrigger
+		let jamCount = jamTrigger.load(ordering: .relaxed)
+		if jamCount != seenJamTrigger
 		{
-			seenJamTrigger = jamTrigger
+			seenJamTrigger = jamCount
 			jamEnvelope = 1
 			jamPhase = 0
 		}
-		if hornTrigger != seenHornTrigger
+		let hornCount = hornTrigger.load(ordering: .relaxed)
+		if hornCount != seenHornTrigger
 		{
-			seenHornTrigger = hornTrigger
+			seenHornTrigger = hornCount
 			hornSecondsLeft = Constants.hornSeconds
 			hornPhaseLow = 0
 			hornPhaseHigh = 0
 		}
 
 		let targetFrequency = Constants.idleFrequency
-			+ Constants.frequencyRiseWithSpeed * speedFraction
-			+ Constants.frequencyRiseWithThrottle * abs(throttle)
+			+ Constants.frequencyRiseWithSpeed * speed
+			+ Constants.frequencyRiseWithThrottle * throttleLevel
 		let targetGain = Constants.idleGain
-			+ Constants.gainRiseWithSpeed * speedFraction
-			+ Constants.gainRiseWithThrottle * abs(throttle)
+			+ Constants.gainRiseWithSpeed * speed
+			+ Constants.gainRiseWithThrottle * throttleLevel
 		let crashDecay = exp(-1 / (Constants.crashDecaySeconds * sampleRate))
 		let jamDecay = exp(-1 / (Constants.jamDecaySeconds * sampleRate))
 		let secondsPerSample = 1 / sampleRate
@@ -195,7 +211,7 @@ private final class SynthVoice
 			{
 				beeperClock -= Constants.beeperPeriod
 			}
-			let beeperWanted: Float = isReversing && beeperClock < Constants.beeperPeriod * Constants.beeperOnFraction
+			let beeperWanted: Float = reversing && beeperClock < Constants.beeperPeriod * Constants.beeperOnFraction
 				? Constants.beeperLevel : 0
 			beeperGain += (beeperWanted - beeperGain) * Constants.beeperSmoothing
 			if beeperWanted == 0 && beeperGain < Constants.gainFloor
@@ -273,7 +289,7 @@ final class SynthesisedSoundEngine: SoundEngine
 	// MARK: - Private Properties
 
 	private let engine = AVAudioEngine()
-	private let voice = SynthVoice()
+	private let voice = SynthVoice(sampleRate: Float(Constants.sampleRate))
 	private var sourceNode: AVAudioSourceNode?
 
 	private enum Constants
@@ -291,11 +307,11 @@ final class SynthesisedSoundEngine: SoundEngine
 		else { return }
 
 		AudioSessionSetup.activate()
-		voice.sampleRate = Float(Constants.sampleRate)
 
+		// Sendable and off the main actor: this block runs on the audio thread.
 		let voice = self.voice
 		let node = AVAudioSourceNode(format: format)
-		{ _, _, frameCount, audioBufferList -> OSStatus in
+		{ @Sendable (_, _, frameCount, audioBufferList) -> OSStatus in
 			voice.render(into: audioBufferList, frameCount: Int(frameCount))
 			return noErr
 		}
@@ -318,24 +334,24 @@ final class SynthesisedSoundEngine: SoundEngine
 
 	func update(_ state: SoundState)
 	{
-		voice.speedFraction = Float(state.speedFraction)
-		voice.throttle = Float(state.throttle)
-		voice.isReversing = state.isReversing
+		voice.speedFraction.store(Float(state.speedFraction), ordering: .relaxed)
+		voice.throttle.store(Float(state.throttle), ordering: .relaxed)
+		voice.isReversing.store(state.isReversing, ordering: .relaxed)
 	}
 
 	func playCrash()
 	{
-		voice.crashTrigger += 1
+		voice.crashTrigger.wrappingAdd(1, ordering: .relaxed)
 	}
 
 	func playJam()
 	{
-		voice.jamTrigger += 1
+		voice.jamTrigger.wrappingAdd(1, ordering: .relaxed)
 	}
 
 	func playParked()
 	{
-		voice.hornTrigger += 1
+		voice.hornTrigger.wrappingAdd(1, ordering: .relaxed)
 	}
 }
 

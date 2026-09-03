@@ -330,11 +330,6 @@ final class GameScene: SKScene
 		return nil
 	}
 
-	deinit
-	{
-		NotificationCenter.default.removeObserver(self)
-	}
-
 	// MARK: - Lifecycle
 
 	override func didMove(to view: SKView)

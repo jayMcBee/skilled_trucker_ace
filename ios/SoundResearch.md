@@ -10,10 +10,9 @@ Options sheet. Written from a survey of the Apple audio APIs for iOS 16+.
   for the reverse beeper, a noise burst for the crash, a two-tone horn for the win.
 - The render block runs on the real-time audio thread. Rules: no locks, no allocation, no
   Objective-C calls, no printing. All state is pre-allocated in the voice object.
-- Control values (speed, throttle, reversing) are written once per frame by the game and read
-  by the render block. Shipped as plain stores. Aligned 32-bit and 64-bit stores are single
-  instructions on arm64, so the worst case is one buffer rendered a frame stale. Move to
-  `Synchronization.Atomic` if the target ever goes to iOS 18+.
+- Control values (speed, throttle, reversing) are stored once per frame by the game and loaded
+  by the render block through `Synchronization.Atomic` with relaxed ordering. No locks, no
+  waiting on either side. The deployment target is iOS 26, so the module is available.
 - One-shots are trigger counters: the render block compares the counter to the last value it
   saw and starts an envelope.
 - Format: `AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)`, non-interleaved
