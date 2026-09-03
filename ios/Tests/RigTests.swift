@@ -9,6 +9,7 @@
 //	==================================================
 
 import XCTest
+@testable import CrazySkilledTrucker
 
 final class RigTests: XCTestCase
 {
@@ -20,6 +21,20 @@ final class RigTests: XCTestCase
 	}
 
 	// MARK: - Collision
+
+	func testContactPointLiesInsideTheOverlap()
+	{
+		let box = Collision.boxCorners(centre: Point(x: 0, y: 0), length: 100, width: 40, heading: 0)
+		let other = Collision.boxCorners(centre: Point(x: 90, y: 10), length: 100, width: 40, heading: 0)
+		let contact = Collision.contactPoint(box, other)
+		XCTAssertTrue(Collision.contains(box, contact), "the contact point must lie in the first box")
+		XCTAssertTrue(Collision.contains(other, contact), "the contact point must lie in the second box")
+
+		let crossing = Collision.boxCorners(centre: Point(x: 0, y: 0), length: 200, width: 10, heading: .pi / 2)
+		let cross = Collision.contactPoint(box, crossing)
+		XCTAssertEqual(cross.x, 0, accuracy: 1e-9, "edge-on crossings fall back to the shared centre")
+		XCTAssertEqual(cross.y, 0, accuracy: 1e-9, "edge-on crossings fall back to the shared centre")
+	}
 
 	func testSeparatingAxisTest()
 	{
@@ -86,7 +101,9 @@ final class RigTests: XCTestCase
 				let articulation = rig.step(drive: -1, steerTarget: rig.steerLimit,
 											seconds: Constants.timestep)
 				if secondsToJam == nil && abs(articulation) > TruckSpec.maxArticulation
+				{
 					secondsToJam = Double(frame) * Constants.timestep
+				}
 			}
 
 			// 2.2s. This catches the 1.1s original that made the game unplayable, and the
@@ -142,6 +159,102 @@ final class RigTests: XCTestCase
 		}
 		XCTAssertLessThan(hypot(slow.position.x - fast.position.x, slow.position.y - fast.position.y),
 			2, "60Hz and 144Hz must agree")
+	}
+
+	// MARK: - The throttle and the dials
+
+	/// Full deflection is the web build's key. The pad adds nothing and takes nothing.
+	func testFullThrottleReachesTheWebBuildSpeeds()
+	{
+		let world = World(preset: .standard)
+		var rig = Rig(at: Placement(position: Point(x: 0, y: 0), heading: 0), world: world)
+		for _ in 0 ..< Int(3 / Constants.timestep)
+		{
+			rig.step(drive: 1, steerTarget: 0, seconds: Constants.timestep)
+		}
+		XCTAssertEqual(rig.speed, TruckSpec.forwardSpeed * world.scale, accuracy: 1e-9,
+			"full forward must be the web build's forward speed")
+
+		for _ in 0 ..< Int(3 / Constants.timestep)
+		{
+			rig.step(drive: -1, steerTarget: 0, seconds: Constants.timestep)
+		}
+		XCTAssertEqual(rig.speed, -TruckSpec.reverseSpeed * world.scale, accuracy: 1e-9,
+			"full reverse must be the web build's reverse speed")
+	}
+
+	func testPartThrottleHoldsPartSpeedAndEasingOffBrakes()
+	{
+		let world = World(preset: .standard)
+		var rig = Rig(at: Placement(position: Point(x: 0, y: 0), heading: 0), world: world)
+		for _ in 0 ..< Int(3 / Constants.timestep)
+		{
+			rig.step(drive: 0.5, steerTarget: 0, seconds: Constants.timestep)
+		}
+		XCTAssertEqual(rig.speed, world.maxForwardSpeed * 0.5, accuracy: 1e-9,
+			"half throttle must settle at half speed")
+
+		for _ in 0 ..< Int(3 / Constants.timestep)
+		{
+			rig.step(drive: 1, steerTarget: 0, seconds: Constants.timestep)
+		}
+		let framesToEaseOff = 0.5 / Constants.timestep
+		for _ in 0 ..< Int(framesToEaseOff)
+		{
+			rig.step(drive: 0.25, steerTarget: 0, seconds: Constants.timestep)
+		}
+		XCTAssertEqual(rig.speed, world.maxForwardSpeed * 0.25, accuracy: 1e-9,
+			"easing off must brake down to the new target inside half a second")
+	}
+
+	/// Mirrors the web build's own check: releasing the throttle must stop the truck
+	/// inside roughly the gap between parked trucks, at every dial setting.
+	func testReleasingTheThrottleStopsInsideTheGap()
+	{
+		let dials = [Tuning(), Tuning(forwardFactor: Tuning.highestForwardFactor, reverseFactor: Tuning.highestReverseFactor)]
+		for preset in Preset.all
+		{
+			for tuning in dials
+			{
+				let world = World(preset: preset, tuning: tuning)
+				var rig = Rig(at: Placement(position: Point(x: 0, y: 0), heading: 0), world: world)
+				for _ in 0 ..< Int(3 / Constants.timestep)
+				{
+					rig.step(drive: -1, steerTarget: 0, seconds: Constants.timestep)
+				}
+				let releasedAt = rig.position.x
+				var frames = 0
+				while rig.speed != 0 && frames < Int(3 / Constants.timestep)
+				{
+					rig.step(drive: 0, steerTarget: 0, seconds: Constants.timestep)
+					frames += 1
+				}
+				let gap = (LotSpec.rowPitch - TruckSpec.parkedRigWidth) * world.scale
+				XCTAssertLessThan(abs(rig.position.x - releasedAt), gap * 1.6,
+					"the stop must fit 1.6x the gap between parked trucks [\(preset.name), reverse x\(tuning.reverseFactor)]")
+			}
+		}
+	}
+
+	/// The reverse dial's ceiling exists for this: it must not make the fold uncatchable.
+	func testReverseDialKeepsTheFoldCatchable()
+	{
+		for preset in Preset.all
+		{
+			let world = World(preset: preset, tuning: Tuning(reverseFactor: Tuning.highestReverseFactor))
+			let clock = world.secondsOfFullLockReverseBeforeJam() ?? .infinity
+			XCTAssertGreaterThan(clock, 1.5, "fold must stay catchable at the top of the reverse dial [\(preset.name)]")
+		}
+	}
+
+	func testTuningIsClampedToTheDialRanges()
+	{
+		let wild = Tuning(forwardFactor: 99, reverseFactor: 99)
+		XCTAssertEqual(wild.forwardFactor, Tuning.highestForwardFactor)
+		XCTAssertEqual(wild.reverseFactor, Tuning.highestReverseFactor)
+		let timid = Tuning(forwardFactor: 0, reverseFactor: -1)
+		XCTAssertEqual(timid.forwardFactor, Tuning.lowestFactor)
+		XCTAssertEqual(timid.reverseFactor, Tuning.lowestFactor)
 	}
 
 	// MARK: - The fold stop

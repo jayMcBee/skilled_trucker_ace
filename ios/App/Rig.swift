@@ -100,7 +100,7 @@ enum Canvas
 /// `pixelsPerMetre` is zoom and nothing else. `wheelbase` is handling and nothing
 /// else: what matters is wheelbase / kingpinToAxle, a ratio of two metre values, so
 /// it is scale-invariant and the two knobs never interfere.
-struct Preset
+struct Preset: Equatable
 {
 	let name: String
 	let pixelsPerMetre: Double
@@ -111,6 +111,28 @@ struct Preset
 	static let veryForgiving = Preset(name: "Very forgiving", pixelsPerMetre: 6.19, wheelbase: 12.29)
 
 	static let all = [standard, forgiving, veryForgiving]
+}
+
+/// The two speed dials from the web build. Separate, because they trade against
+/// completely different things: forward speed against nothing at all, reverse speed
+/// against the fold clock. The reverse ceiling is deliberately tight: the base reverse
+/// speed is already high, and 1.6x is the most that keeps the fold catchable.
+struct Tuning: Equatable
+{
+	let forwardFactor: Double
+	let reverseFactor: Double
+	let jackknifeEndsRun: Bool
+
+	static let lowestFactor = 0.3
+	static let highestForwardFactor = 2.5
+	static let highestReverseFactor = 1.6
+
+	init(forwardFactor: Double = 1, reverseFactor: Double = 1, jackknifeEndsRun: Bool = false)
+	{
+		self.forwardFactor = clamped(forwardFactor, Tuning.lowestFactor, Tuning.highestForwardFactor)
+		self.reverseFactor = clamped(reverseFactor, Tuning.lowestFactor, Tuning.highestReverseFactor)
+		self.jackknifeEndsRun = jackknifeEndsRun
+	}
 }
 
 /// Every world dimension in pixels, scaled from `TruckSpec` exactly once.
@@ -141,7 +163,9 @@ func clamped(_ value: Double, _ lowest: Double, _ highest: Double) -> Double
 func movedToward(_ value: Double, _ target: Double, _ step: Double) -> Double
 {
 	if abs(target - value) <= step
+	{
 		return target
+	}
 	return value + (target > value ? step : -step)
 }
 
@@ -177,6 +201,59 @@ struct Collision
 		]
 	}
 
+	/// True when `point` lies inside the convex quad, whichever way it winds.
+	static func contains(_ quad: ConvexQuad, _ point: Point) -> Bool
+	{
+		var sawPositive = false
+		var sawNegative = false
+		for index in quad.indices
+		{
+			let start = quad[index]
+			let end = quad[(index + 1) % quad.count]
+			let cross = (end.x - start.x) * (point.y - start.y) - (end.y - start.y) * (point.x - start.x)
+			if cross > 0
+			{
+				sawPositive = true
+			}
+			if cross < 0
+			{
+				sawNegative = true
+			}
+		}
+		return !(sawPositive && sawNegative)
+	}
+
+	/// Where two overlapping quads touch, for placing an effect: the mean of every corner
+	/// of either quad that lies inside the other. Two edges crossing with no corner inside
+	/// falls back to the midpoint between the two centres.
+	static func contactPoint(_ first: ConvexQuad, _ second: ConvexQuad) -> Point
+	{
+		var sumX = 0.0
+		var sumY = 0.0
+		var count = 0
+		for corner in first where contains(second, corner)
+		{
+			sumX += corner.x
+			sumY += corner.y
+			count += 1
+		}
+		for corner in second where contains(first, corner)
+		{
+			sumX += corner.x
+			sumY += corner.y
+			count += 1
+		}
+		if count > 0
+		{
+			return Point(x: sumX / Double(count), y: sumY / Double(count))
+		}
+
+		let all = first + second
+		let centreX = all.reduce(0.0) { $0 + $1.x } / Double(all.count)
+		let centreY = all.reduce(0.0) { $0 + $1.y } / Double(all.count)
+		return Point(x: centreX, y: centreY)
+	}
+
 	/// Separating-axis test on two convex quads. Both polygons' edge normals are
 	/// tested, which crossed slivers need and one polygon's normals alone would miss.
 	static func intersects(_ first: ConvexQuad, _ second: ConvexQuad) -> Bool
@@ -209,7 +286,9 @@ struct Collision
 				}
 
 				if firstHighest < secondLowest || secondHighest < firstLowest
+				{
 					return false
+				}
 			}
 		}
 		return true
@@ -273,6 +352,48 @@ struct Rig
 								  trailerHeading: trailerHeading, dimensions: dimensions)
 	}
 
+	private enum Constants
+	{
+		/// Fraction of a cab length that the cab BOX sits ahead of the tracked point, so
+		/// the drive axle ends up under the fifth wheel rather than at the cab's centre.
+		static let cabBoxForwardOffset = 0.18
+	}
+
+	// MARK: - Init
+
+	init(at start: Placement, world: World)
+	{
+		self.init(at: start, trailerHeading: start.heading, world: world)
+	}
+
+	/// Starts with the trailer already at an angle, which is how the fold behaviour is
+	/// tested: a rig that begins perfectly straight in reverse stays straight forever,
+	/// because zero fold is an equilibrium even though it is an unstable one. The wheel
+	/// can start turned too, so the fold clock measures from full lock as core.js does.
+	init(at start: Placement, trailerHeading: Double, steerAngle: Double = 0, world: World)
+	{
+		self.position = start.position
+		self.heading = start.heading
+		self.trailerHeading = trailerHeading
+		self.steerAngle = clamped(steerAngle, -TruckSpec.maxSteerAngle, TruckSpec.maxSteerAngle)
+		self.wheelbase = world.preset.wheelbase * world.scale
+		self.kingpinToAxle = TruckSpec.kingpinToAxle * world.scale
+		self.dimensions = world.dimensions
+		self.maxForwardSpeed = world.maxForwardSpeed
+		self.maxReverseSpeed = world.maxReverseSpeed
+		self.acceleration = world.acceleration
+		self.braking = world.braking
+		self.maxSteerAngle = TruckSpec.maxSteerAngle
+		self.steerRate = TruckSpec.steerRate
+	}
+
+	// MARK: - Public API
+
+	var steerLimit: Double
+	{
+		return maxSteerAngle
+	}
+
 	/// Free of any `Rig` instance, because the level framing needs the start pose's real
 	/// extent before there is a world for a rig to be built against.
 	static func collisionBoxes(tracking position: Point, heading: Double,
@@ -291,49 +412,13 @@ struct Rig
 		]
 	}
 
-	private enum Constants
-	{
-		/// Fraction of a cab length that the cab BOX sits ahead of the tracked point, so
-		/// the drive axle ends up under the fifth wheel rather than at the cab's centre.
-		static let cabBoxForwardOffset = 0.18
-	}
-
-	// MARK: - Init
-
-	init(at start: Placement, world: World)
-	{
-		self.init(at: start, trailerHeading: start.heading, world: world)
-	}
-
-	/// Starts with the trailer already at an angle, which is how the fold behaviour is
-	/// tested: a rig that begins perfectly straight in reverse stays straight forever,
-	/// because zero fold is an equilibrium even though it is an unstable one.
-	init(at start: Placement, trailerHeading: Double, world: World)
-	{
-		self.position = start.position
-		self.heading = start.heading
-		self.trailerHeading = trailerHeading
-		self.wheelbase = world.preset.wheelbase * world.scale
-		self.kingpinToAxle = TruckSpec.kingpinToAxle * world.scale
-		self.dimensions = world.dimensions
-		self.maxForwardSpeed = TruckSpec.forwardSpeed * world.scale
-		self.maxReverseSpeed = TruckSpec.reverseSpeed * world.scale
-		self.acceleration = TruckSpec.acceleration * world.scale
-		self.braking = TruckSpec.braking * world.scale
-		self.maxSteerAngle = TruckSpec.maxSteerAngle
-		self.steerRate = TruckSpec.steerRate
-	}
-
-	// MARK: - Public API
-
-	var steerLimit: Double
-	{
-		return maxSteerAngle
-	}
-
-	/// Advances by `seconds`. `drive` is -1, 0 or +1. `steerTarget` is the angle the
-	/// wheel is being asked to reach, in radians; the wheel travels toward it at
-	/// `steerRate` and holds wherever it is left, so nothing springs to centre.
+	/// Advances by `seconds`. `drive` is a throttle in -1 ... +1: full deflection asks for
+	/// the full forward or reverse speed, exactly as the web build's keys did, and a
+	/// part deflection asks for that fraction of it, which is what a thumb pad can do
+	/// and a key cannot. Easing off below the current speed brakes, as releasing does.
+	/// `steerTarget` is the angle the wheel is being asked to reach, in radians; the
+	/// wheel travels toward it at `steerRate` and holds wherever it is left, so nothing
+	/// springs to centre.
 	///
 	/// Returns the RAW articulation, unclamped, so the caller can tell the rig jammed
 	/// even though the stored state never leaves the limit.
@@ -352,18 +437,10 @@ struct Rig
 		let headingBefore = heading
 		let trailerHeadingBefore = trailerHeading
 
-		if drive > 0
-		{
-			speed = min(speed + acceleration * seconds, maxForwardSpeed)
-		}
-		else if drive < 0
-		{
-			speed = max(speed - acceleration * seconds, -maxReverseSpeed)
-		}
-		else
-		{
-			speed = movedToward(speed, 0, braking * seconds)
-		}
+		let throttle = clamped(drive, -1, 1)
+		let targetSpeed = throttle > 0 ? throttle * maxForwardSpeed : throttle * maxReverseSpeed
+		let isEasingOff = speed * targetSpeed >= 0 && abs(speed) > abs(targetSpeed)
+		speed = movedToward(speed, targetSpeed, (isEasingOff ? braking : acceleration) * seconds)
 
 		let travel = speed * seconds
 		heading = normalizedAngle(heading + (travel / wheelbase) * tan(steerAngle))
@@ -418,11 +495,29 @@ struct World
 	// MARK: - Properties
 
 	let preset: Preset
+	let tuning: Tuning
 	let scale: Double
 	let dimensions: TruckDimensions
 	let level: Level
 	let lot: Lot
 	let obstacles: [ConvexQuad]
+
+	/// Pixels per second. Acceleration and braking scale with the faster dial, as in
+	/// the web build, so a faster truck still stops inside the gap between parked rigs.
+	let maxForwardSpeed: Double
+	let maxReverseSpeed: Double
+	let acceleration: Double
+	let braking: Double
+
+	var forwardKilometresPerHour: Double
+	{
+		return TruckSpec.forwardSpeed * tuning.forwardFactor * Constants.metresPerSecondToKilometresPerHour
+	}
+
+	var reverseKilometresPerHour: Double
+	{
+		return TruckSpec.reverseSpeed * tuning.reverseFactor * Constants.metresPerSecondToKilometresPerHour
+	}
 
 	private enum Constants
 	{
@@ -430,15 +525,29 @@ struct World
 		/// The start sits this many row pitches beyond the last slot, at the far end of
 		/// the lane, so the bay has to be passed and reversed into.
 		static let startSlotsBeyondLot = 1.5
+		static let metresPerSecondToKilometresPerHour = 3.6
+		/// The fold clock starts from a rig that is very slightly bent: a perfectly
+		/// straight rig in reverse stays straight forever, since zero fold is an
+		/// equilibrium even though it is an unstable one.
+		static let foldClockInitialBend = 0.02
+		static let foldClockTimestep = 1.0 / 60.0
+		static let foldClockGiveUpAfterSeconds = 120.0
 	}
 
 	// MARK: - Init
 
-	init(preset: Preset)
+	init(preset: Preset, tuning: Tuning = Tuning())
 	{
 		self.preset = preset
+		self.tuning = tuning
 		let scale = preset.pixelsPerMetre
 		self.scale = scale
+
+		let fasterDial = max(tuning.forwardFactor, tuning.reverseFactor)
+		self.maxForwardSpeed = TruckSpec.forwardSpeed * scale * tuning.forwardFactor
+		self.maxReverseSpeed = TruckSpec.reverseSpeed * scale * tuning.reverseFactor
+		self.acceleration = TruckSpec.acceleration * scale * fasterDial
+		self.braking = TruckSpec.braking * scale * fasterDial
 
 		let dimensions = TruckDimensions(
 			trailerLength: TruckSpec.trailerLength * scale,
@@ -471,6 +580,27 @@ struct World
 	}
 
 	// MARK: - Public API
+
+	/// Seconds of full-lock reversing before the fold reaches the stop, or nil if it
+	/// never does. This is what reverse speed buys, and the only thing it buys, so the
+	/// options sheet shows it next to the reverse dial.
+	func secondsOfFullLockReverseBeforeJam() -> Double?
+	{
+		var rig = Rig(at: Placement(position: Point(x: 0, y: 0), heading: 0),
+					  trailerHeading: Constants.foldClockInitialBend,
+					  steerAngle: TruckSpec.maxSteerAngle, world: self)
+		let timestep = Constants.foldClockTimestep
+		let steps = Int(Constants.foldClockGiveUpAfterSeconds / timestep)
+		for step in 0 ..< steps
+		{
+			let articulation = rig.step(drive: -1, steerTarget: rig.steerLimit, seconds: timestep)
+			if abs(articulation) > TruckSpec.maxArticulation
+			{
+				return Double(step) * timestep
+			}
+		}
+		return nil
+	}
 
 	/// Side 0 is the left row facing east, side 1 the right row facing west. Noses point
 	/// into the lane, so you back in and the cab ends up nearest the traffic.

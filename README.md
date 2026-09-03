@@ -82,6 +82,8 @@ Cues in different places and different shapes, so they never compete:
 - `index.html` — rendering, input, game state
 - `core.js` — the metre spec, presets, rig kinematics, collision, level. Shared by the page and both checks.
 - `smoke.js` — runs the page's own script against a stub canvas.
+- `ios/` — the iPad build: SpriteKit scene, thumb pads, options sheet, two sound engines.
+  See `ios/README.md`. The physics there is a port of `core.js`, which stays the reference.
 
 ## Check
 
