@@ -22,9 +22,13 @@ function el() {
 	return e;
 }
 
+// Capture the key handlers instead of dropping them. They were noop'd, so every key the page
+// binds was untested -- which is how T shipped with no visible effect while driving forward.
+var handlers = {};
 var sandbox = { document: { getElementById: el, createElement: el }, requestAnimationFrame: noop, console: console };
 sandbox.window = sandbox;
-sandbox.window.addEventListener = noop;
+sandbox.window.addEventListener = function (type, fn) { (handlers[type] = handlers[type] || []).push(fn); };
+function press(k) { handlers.keydown.forEach(function (fn) { fn({ key: k, preventDefault: noop }); }); }
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(dir + 'core.js', 'utf8'), sandbox, { filename: 'core.js' });
 vm.runInContext(page, sandbox, { filename: 'index.html' });
@@ -36,6 +40,18 @@ assert.ok(sandbox.lot && sandbox.lot.bay, 'lot must be built after the page scri
 assert.strictEqual(sandbox.isGameOver, false, 'must not start in a game-over state');
 assert.strictEqual(sandbox.presetBar.children.length, sandbox.PRESETS.length, 'every preset must get a button');
 
+// Every key the page binds must actually do something. These were untested: addEventListener was
+// a noop, so a dead key looked exactly like a working one.
+assert.ok(handlers.keydown && handlers.keydown.length, 'the page must bind a keydown handler');
+
+// R restarts, and the preset keys switch preset.
+sandbox.shifts = 7;
+press('r');
+assert.strictEqual(sandbox.shifts, 0, 'R must restart the run');
+press(sandbox.PRESETS[2].key);
+assert.strictEqual(sandbox.activePreset, 2, 'a preset key must switch preset');
+press(sandbox.PRESETS[0].key);
+
 // Drive every preset: switching preset must leave a clean, playable state, and every branch of
 // update() and draw() must survive real input at every zoom.
 var pressed = [{}, { up: 1 }, { down: 1 }, { up: 1, left: 1 }, { down: 1, right: 1 }, { down: 1, left: 1 }];
@@ -45,9 +61,6 @@ sandbox.PRESETS.forEach(function (p, pi) {
 	assert.ok(sandbox.rig && !sandbox.isGameOver, 'preset switch must leave a live rig' + tag);
 
 	for (var i = 0; i < 900; i++) {
-		// Half the run under trailer-direction steering, and the flip happens mid-reverse: the
-		// scheme change is a live toggle, so the handover is the part worth driving through.
-		sandbox.setTrailerSteer(i > 450);
 		var q = pressed[Math.floor(i / 150) % pressed.length];
 		sandbox.keys.up = !!q.up; sandbox.keys.down = !!q.down;
 		sandbox.keys.left = !!q.left; sandbox.keys.right = !!q.right;
@@ -60,7 +73,6 @@ sandbox.PRESETS.forEach(function (p, pi) {
 
 	// A rig placed correctly in the bay and stopped must register as parked, at every zoom --
 	// the win tolerance scales with the rig, so a fixed pixel tolerance would silently break here.
-	sandbox.setTrailerSteer(false);
 	sandbox.initGame(pi);
 	sandbox.rig.trailer.angle = sandbox.lot.bay.angle;
 	sandbox.rig.trailer.x = sandbox.lot.bay.trailerX;

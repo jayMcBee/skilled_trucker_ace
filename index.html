@@ -82,8 +82,8 @@
 		<canvas id="canvas" width="850" height="650"></canvas>
 		<div id="ui-overlay">
 			<div class="stat-box">Shifts: <span id="gear-shifts" style="color:#f43f5e">0</span></div>
-			<div class="stat-box"><span id="steer-mode">Wheel</span><span class="wheel-track"><i id="wheel-fill"></i></span></div>
-			<div class="stat-box">Spot Alignment: <span id="alignment-pct" style="color:#38bdf8">0%</span></div>
+			<div class="stat-box">Wheel<span class="wheel-track"><i id="wheel-fill"></i></span></div>
+			<div class="stat-box">Bay: <span id="bay-dist">&mdash;</span> away, <span id="bay-angle">&mdash;</span> off</div>
 		</div>
 		<div id="modal">
 			<h1 id="modal-title">Spot Secured</h1>
@@ -96,9 +96,7 @@
 	<div id="preset-stats"></div>
 	<div id="controls-hint">
 		<strong>Drive</strong> W / S &nbsp; <strong>Steer</strong> A / D &nbsp; <strong>Restart</strong> R &nbsp; <strong>Preset</strong> 1-3 &nbsp; <strong>Forward</strong> + / - &nbsp; <strong>Reverse</strong> [ / ]<br>
-		<strong>Trailer steering</strong> T — <span id="mode-state">off: A / D turn the wheel</span><br>
-		Classic: the wheel holds its angle — steer back to straighten. Reversing, the fold always grows; countersteer to hold it.<br>
-		Trailer steering: reversing, A / D send the trailer left / right and the truck works the wheel out. It will not let you jackknife.
+		The wedge at the nose is the wheel angle.<br>The wheel holds its angle — steer back to straighten. Reversing, the fold always grows; countersteer to hold it.
 	</div>
 
 <script src="core.js"></script>
@@ -106,10 +104,9 @@
 	var canvas = document.getElementById('canvas');
 	var ctx = canvas.getContext('2d');
 	var gearShiftsEl = document.getElementById('gear-shifts');
-	var alignmentEl = document.getElementById('alignment-pct');
+	var bayDistEl = document.getElementById('bay-dist');
+	var bayAngleEl = document.getElementById('bay-angle');
 	var wheelFill = document.getElementById('wheel-fill');
-	var steerModeEl = document.getElementById('steer-mode');
-	var modeStateEl = document.getElementById('mode-state');
 	var modal = document.getElementById('modal');
 	var modalTitle = document.getElementById('modal-title');
 	var modalDesc = document.getElementById('modal-desc');
@@ -133,9 +130,6 @@
 
 	window.addEventListener('keydown', function (e) {
 		if (e.key === 'r' || e.key === 'R') return initGame(activePreset);
-		// Mid-run, deliberately: the two schemes are only comparable if you can flip between them
-		// on the same approach to the same bay.
-		if (e.key === 't' || e.key === 'T') return setTrailerSteer(!TRAILER_STEER);
 		if (e.key === '+' || e.key === '=') { setFwd(FWD + 0.1); return initGame(activePreset); }
 		if (e.key === '-' || e.key === '_') { setFwd(FWD - 0.1); return initGame(activePreset); }
 		if (e.key === ']') { setRev(REV + 0.1); return initGame(activePreset); }
@@ -169,8 +163,7 @@
 			'holding full lock going forward: <b>' +
 			(st.foldsForward ? 'jackknifes' : 'settles at ' + st.settlesAt.toFixed(0) + '°') + '</b>' +
 			'<br>forward <b>' + st.fwdKmh.toFixed(0) + ' km/h</b> (' + st.fwd.toFixed(1) + '× &nbsp;+ / -)' +
-			' &nbsp;·&nbsp; reversing <b>' + st.assistRevKmh.toFixed(0) + ' km/h</b> with trailer steering,' +
-			' <b>' + st.revKmh.toFixed(0) + ' km/h</b> without (' + st.rev.toFixed(1) + '× &nbsp;[ / ])' +
+			' &nbsp;·&nbsp; reversing <b>' + st.revKmh.toFixed(1) + ' km/h</b> (' + st.rev.toFixed(1) + '× &nbsp;[ / ])' +
 			' &nbsp;·&nbsp; fold clock <b>' +
 			(st.foldClock === null ? 'never folds' : st.foldClock.toFixed(1) + ' s') + '</b>' +
 			' — seconds of full-lock reversing before it jams';
@@ -204,9 +197,12 @@
 		var angleDiff = Math.abs(normAngle(rig.trailer.angle - lot.bay.angle));
 		var tol = TRUCK.trailerWid * 0.35;          // tolerance scales with the rig, not the zoom
 
-		alignmentEl.innerText = Math.round((
-			Math.max(0, 1 - dist / (TRUCK.trailerLen * 1.2)) * 0.5 +
-			Math.max(0, 1 - angleDiff / (Math.PI / 4)) * 0.5) * 100) + '%';
+		// Metres and degrees, separately. Each turns green when it alone is good enough to win, so
+		// you can see which of the two still needs work instead of guessing at one blended number.
+		bayDistEl.innerText = (dist / SCALE).toFixed(1) + ' m';
+		bayDistEl.style.color = dist < tol ? '#a3e635' : '#38bdf8';
+		bayAngleEl.innerText = (angleDiff * 57.3).toFixed(0) + '\u00b0';
+		bayAngleEl.style.color = angleDiff < 0.12 ? '#a3e635' : '#38bdf8';
 
 		if (dist < tol && angleDiff < 0.12 && Math.abs(rig.speed) < TRUCK.trailerLen * 0.01)
 			gameOver('Perfectly Parked!', 'You fitted the rig in with ' + shifts + ' direction shifts.', '#38bdf8');
@@ -247,22 +243,11 @@
 		var nose = TRUCK.cabLen * 0.18;
 		drawCab(rig.x + Math.cos(rig.angle) * nose, rig.y + Math.sin(rig.angle) * nose, rig.angle, rig.steer);
 
-		// No wedge while the machine has the wheel: the wedge answers "where is the wheel", and
-		// under the assist that is not the player's question any more. Their answer is the trailer
-		// itself turning. ponytail: nothing new drawn to replace it -- the point of the scheme is
-		// to remove the question, and a fourth cue would smuggle it back in.
-		if (!rig.assisting) drawSteerWedge();
+		drawSteerWedge();
 
-		// The bar shows whatever A / D are currently commanding: the wheel, or the trailer. Right
-		// is a NEGATIVE fold, so the sign flips to keep right filling right.
-		var f = rig.assisting ? -rig.targetFold / rig.maxFold : rig.steer / rig.maxSteer;
-		steerModeEl.innerText = rig.assisting ? 'Trailer' : 'Wheel';
-		wheelFill.style.background = rig.assisting ? '#a3e635' : '#38bdf8';
+		var f = rig.steer / rig.maxSteer;
 		wheelFill.style.left = (f < 0 ? 50 + f * 50 : 50) + '%';
 		wheelFill.style.width = Math.abs(f) * 50 + '%';
-		modeStateEl.innerText = TRAILER_STEER
-			? 'on: A / D send the trailer, the truck steers'
-			: 'off: A / D turn the wheel';
 
 		glow(150, 100, 180, 'rgba(251,191,36,.08)');
 		glow(650, 100, 180, 'rgba(251,191,36,.08)');

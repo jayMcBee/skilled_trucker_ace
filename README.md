@@ -13,41 +13,14 @@ limit is a fail.
 
 Open `index.html`. No build step, no dependencies.
 
-- **Drive** — `W`/`S` or `Up`/`Down`  (forward 40 km/h)
+- **Drive** — `W`/`S` or `Up`/`Down`
 - **Steer** — `A`/`D` or `Left`/`Right`
-- **Steering scheme** — `T`
 - **Restart** — `R`
 
-## Steering schemes
-
-`T` flips between them, mid-run and mid-manoeuvre, because they are only comparable on the same
-approach to the same bay. They reverse at different speeds, and the scheme is the reason: see
-*Speed*, below.
-
-**Classic.** `A`/`D` are the wheel. Reversing, the fold always grows and you countersteer against
-a clock.
-
-**Trailer-direction.** Reversing — and stopped, so you can aim before you move — `A`/`D` are the
-*trailer*: `D` sends it clockwise, and the truck solves for the wheel angle. `A`/`D` still mean the
-same on-screen direction they did in classic; the assist just skips the part where the cab goes the
-other way first. Going forward the wheel is the wheel again, since the trailer merely follows.
-
-The command is a fold angle, because a held fold *is* a trailer turn rate:
-`d(trailerAngle)/d(travel) = sin(fold)/D`. Holding one needs the same equilibrium that decides
-whether a held wheel settles going forward, `tan(steer) = (W/D)·sin(fold)`, plus a term that closes
-the error. So the reverse instability is not simulated away — it is still there, being cancelled
-frame by frame, and you can watch the steer axle do it.
-
-The command stops short of the tightest holdable fold. At that fold full lock exactly *holds* and
-nothing shrinks it: reverse cannot unwind it, only pulling forward can, which is a jackknife by a
-politer name. `FOLD_HEADROOM` keeps the last 20% as unwind authority, and costs about a quarter of
-the trailer's tightest turn:
-
-| | fold the wheel can hold | assist commands up to | tightest trailer radius |
-|---|---|---|---|
-| 1 Standard | 64° | 46° | 106px, against a 129px rig |
-| 2 Forgiving | 40° | 31° | 149px |
-| 3 Very forgiving | 27° | 21° | 213px |
+The box at the top right reads how far the trailer is from the bay, in metres, and how many degrees
+off square it is. Each number turns green when it alone is good enough to win. It replaced a single
+"spot alignment" percentage that blended the two, where 60% could mean close and crooked or straight
+and far — one number you could not act on.
 
 ## Speed
 
@@ -55,25 +28,17 @@ The unit that matters is truck lengths per second, not km/h. At this zoom the tr
 15.8 km/h is 27px/s: one truck length every 5 seconds, which reads as slow motion however fast the
 number sounds.
 
-Reverse speed is capped by the fold clock — how long full lock takes to jam — and *only the classic
-scheme pays that*. The assist cannot reach the fold stop at any speed, because the cap on its
-command is a per-travel property that speed cannot touch. So the two schemes reverse at different
-speeds, and acceleration scales with them so the ramp does not eat the gain:
-
-| | reverse | back up half a truck length | fold clock |
-|---|---|---|---|
-| trailer-direction | 32 km/h, 51 at the dial's top | 2.1s | cannot fold |
-| classic | 16 km/h, 25 at the dial's top | 3.3s | 3.0s |
-
-Forward is 40 km/h, doubled from 20, and it costs nothing: the fold converges going forward, so
-forward speed trades against nothing at all. That halves the drive to the bay, from 7.5s to 3.7s.
+Reverse is 24 km/h, up from 15.8. It is capped by the fold clock — how long full lock takes to jam —
+which is 2.3s at that speed. Forward is 40 km/h, up from 20, and costs nothing at all: the fold
+converges going forward, so forward speed trades against nothing. The drive to the bay halved, 7.5s
+to 3.7s.
 
 Braking is set by the lot, not by physics. There is 42cm between parked trucks — 2.6px — and any
-scrape ends the run, so releasing the key has to stop the truck inside about that. It does not:
-`friction` is 2.9g, which no loaded semi can do, and it still takes 3.8px to stop from 32 km/h. A
-realistic 0.7g took 17px, six times the gap, which is what read as sluggish. Doubling the reverse
-speed had doubled that distance, since stopping distance goes as v². The self-check now asserts the
-stop fits twice the gap, so the next speed change cannot quietly undo it.
+scrape ends the run, so releasing the key has to stop the truck inside about that. `friction` is
+36 m/s², or 3.7g, which no loaded semi can do, and it still takes 3.8px to stop. A realistic 0.7g
+took 17px, six times the gap, and that is what read as sluggish: uncontrollable, not slow. Stopping
+distance goes as v², so the self-check asserts the stop fits 1.6x the gap. That is the thing a
+future speed change would silently ruin.
 
 ## Handling presets
 
@@ -106,11 +71,6 @@ Cues in different places and different shapes, so they never compete:
 - **Wedge at the cab nose** — the steering angle. Straight edges always mean wheel angle.
   It resolves 1.69px per degree, against 0.088 for the front wheels and 1.33 for a HUD bar,
   because angular precision is linear in length and a wheel is 10px long.
-  Under trailer-direction steering the wedge is not drawn at all: it answers "where is the wheel",
-  which stops being the player's question the moment the truck is working the wheel itself.
-- **The HUD bar** — the wheel angle under classic steering, and the *trailer command* under
-  trailer-direction steering, filling the way the trailer is being sent. It changes colour and
-  label with the scheme, which is also how you see the assist take over as you shift into reverse.
 - **Front wheels** — diegetic, always on. Drawn 1.6x their true angle: full lock is 24°, which
   on a 13px wheel moves the tip under 3px. Real steer axles reach ~50°, so 1.6x stays possible.
 
@@ -126,14 +86,12 @@ Cues in different places and different shapes, so they never compete:
     node smoke.js   # the page itself, against a stub canvas
 
 Asserts the separating-axis tests, that the trailer converges going forward and diverges in
-reverse, that 600 steps stay NaN-free, and that the level parks no truck inside another.
+reverse, that 600 steps stay NaN-free, that the level parks no truck inside another, and that
+releasing the key stops the truck inside 1.6x the gap between parked trucks.
 
-For the assist, at every preset: a held direction *settles* the fold on the commanded angle
-instead of running away, that angle is reachable in reverse from either side, the fold stop is
-never reached, `D` swings the trailer the same way it does under classic steering, engaging
-mid-fold adopts the fold it finds, and forward steering is left alone. `smoke.js` drives half of
-each preset's run under the assist and flips schemes mid-reverse, since the handover is the part
-worth driving through.
+`smoke.js` now captures the page's key handlers and presses the keys. They used to be dropped into
+a noop, so a dead key looked exactly like a working one — which is how a mode shipped that did
+nothing visible while driving forward.
 
 ## Physics
 
@@ -148,14 +106,24 @@ One convention throughout: local `+x` is forward, and `angle` is the direction t
 
 ## Open decisions
 
-**1. Which scheme ships.** Trailer-direction steering is built, on `T`, against classic — see
-*Steering schemes*. Both work; nobody has decided which is the game. The assist now reverses twice
-as fast, which is the second thing in its favour after not being able to jackknife.
+**1. Trailer-direction steering: built, played, dropped.** `A`/`D` commanded the trailer and the
+game solved the wheel angle. It worked — the fold settled on the commanded angle and could not
+jackknife — and it was unintuitive in play. Three reasons, worth keeping so it is not rebuilt:
 
-Still on the table, both rejected for now as not worth the code until the speed question settles:
-starting the truck 1.5 slots past the bay instead of 5.5, and giving acceleration its own dial
-(measured at 1x speed it takes a quarter-length nudge from 2.1s to 1.7s and does nothing to long
-moves). Three numbers in it were set
+- **Pressing `D` moved the trailer's back end LEFT on screen.** Correct for a real driver, who
+  faces backwards, so their right is the screen's left. Wrong for a player looking down at a
+  screen. This is the one that killed it, and it is not fixable by flipping the sign: whichever
+  way you map it, half the manoeuvre has the truck pointing the other way.
+- The mode was invisible while driving forward, since both schemes steer the front wheels there.
+- The nose wedge was tied to whether the assist was engaged, and the assist engaged at zero speed,
+  so it blinked out on every stop and back on every pull-forward.
+
+One finding survives, in case reverse speed is ever revisited: the fold clock limits *only* the
+countersteering scheme. An assist that cannot fold has no speed cap from it.
+
+Still on the table, both rejected for now as not worth the code: starting the truck 1.5 slots past
+the bay instead of 5.5, and giving acceleration its own dial (at 1x speed it takes a quarter-length
+nudge from 2.1s to 1.7s and does nothing to long moves). Three numbers in it were set
 by argument rather than by play, and are the things to change first if it feels wrong:
 
 - `FOLD_GAIN = 2.5` — how hard the assist chases the commanded fold. The error closes over
@@ -169,9 +137,7 @@ The instability is intact underneath; the assist only cancels it. So classic sta
 mode, next to `JACKKNIFE_ENDS_RUN`, unless it turns out nobody wants it.
 
 **2. Whether the HUD wheel bar can go.** The nose wedge measures 1.69px per degree against the
-bar's 1.33, so it should be redundant — but under trailer-direction steering the wedge is gone and
-the bar is the only readout of the trailer command, so this can no longer be a straight deletion.
-Untested by a human either way.
+bar's 1.33, so it should be redundant. Untested by a human.
 
 **3. Is the lot solvable?** The geometry is verified — nothing overlaps, everything is on
 screen, the bay is reachable in principle. Nobody has parked in it yet.

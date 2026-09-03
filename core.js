@@ -25,19 +25,17 @@ var SPEC = {
 	// Reverse was set from what real yard backing looks like, and rejected as slow motion at
 	// 5.1, 5.2 and 7.9 km/h. Realism loses: this is a casual game and reverse is most of it.
 	// The cost is the fold clock, which is on screen next to the dial rather than hidden.
-	revSpeed: 4.40,         // m/s = 15.8 km/h, and only the classic scheme is held to it
-	// The assist cannot fold, so the fold clock does not cap its reverse speed. 15.8 km/h is
-	// 27 px/s at this zoom: one truck length every 5 seconds, which reads as slow motion however
-	// fast the number sounds. Doubled, and the acceleration doubles with it so the extra speed is
-	// actually reachable inside a half-length nudge.
-	assistRevSpeed: 8.80,   // m/s = 31.7 km/h
+	// 15.8 km/h was 27 px/s at this zoom: one truck length every five seconds, which reads as slow
+	// motion however fast the number sounds. The unit that matters is truck lengths per second.
+	// Raised until the fold clock, not the speedometer, said stop.
+	revSpeed: 6.60,         // m/s = 23.8 km/h
 	accel: 7.00,
 	// Not a coast: a brake, at 2.9g, which no loaded semi can do. It is set by the LOT, not by
 	// physics. There is 42cm between parked trucks, 2.6px at this zoom, and any scrape ends the
 	// run -- so releasing the key has to stop the truck inside about that. At a realistic 0.7g the
 	// truck slid 17px after release, six times the gap, which is what read as sluggish. Doubling
 	// the reverse speed had doubled that distance, since it goes as v^2.
-	friction: 28.00,
+	friction: 36.00,
 	maxSteer: 0.42,         // 24 deg
 	steerRate: 0.7,         // 0.6 s centre to lock
 
@@ -133,16 +131,14 @@ function slotCentre(i, side) {
 // Seconds of full-lock reversing before the fold reaches the stop. This is what reverse speed
 // buys, and the only thing it buys, so the UI shows it next to the dial.
 function foldClock() {
-	var r = makeRig(0, 0, 0), dt = 1 / 60, was = TRAILER_STEER, at = null;
-	TRAILER_STEER = false;      // this is the CLASSIC scheme's number; the assist would hold the wheel
+	var r = makeRig(0, 0, 0), dt = 1 / 60;
 	r.trailer.angle = 0.02;
-	for (var i = 0; i < 120 / dt && at === null; i++) {
+	for (var i = 0; i < 120 / dt; i++) {
 		r.steer = r.maxSteer;
 		stepRig(r, -1, 0, dt);
-		if (Math.abs(normAngle(r.angle - r.trailer.angle)) > 1.44) at = i * dt;
+		if (Math.abs(normAngle(r.angle - r.trailer.angle)) > 1.44) return i * dt;
 	}
-	TRAILER_STEER = was;
-	return at;
+	return null;
 }
 
 // Headline numbers for the on-screen readout: what each preset actually changes.
@@ -154,7 +150,6 @@ function presetStats() {
 		fwd: FWD, rev: REV,
 		fwdKmh: SPEC.fwdSpeed * FWD * 3.6,
 		revKmh: SPEC.revSpeed * REV * 3.6,
-		assistRevKmh: SPEC.assistRevSpeed * REV * 3.6,
 		foldClock: foldClock(),
 		ratio: PRESET.wheelbase / SPEC.kingpinToAxle,
 		turnRadiusPx: R * SCALE,
@@ -214,23 +209,6 @@ function intersects(a, b) {
 var MAX_ARTICULATION = 1.45;        // ~83 degrees, then the cab is into the trailer nose
 var JACKKNIFE_ENDS_RUN = false;     // ponytail: one flag, not a mode system. Extra-hard flips it.
 
-// Trailer-direction steering. Reversing, A/D say where the TRAILER goes and the game solves the
-// wheel angle -- the trailer-backup knob, rather than the counter-steering the knob replaced.
-// A held fold IS a trailer turn rate, since d(trailerAngle)/d(travel) = sin(fold)/D. So the
-// command is a fold angle, and holding one needs the SAME equilibrium that decides whether a held
-// wheel settles going forward:  tan(steer) = (W/D) * sin(fold).
-// The error term closes the gap to the commanded fold, and saturates at full lock -- which is
-// where classic countersteering would have had you anyway.
-var TRAILER_STEER = false;
-var FOLD_GAIN = 2.5;                // ponytail: the error closes over D/GAIN of travel. Tuned by feel.
-// Reversing, a fold only unwinds while the wheel has authority left over it, and at the tightest
-// HOLDABLE fold that authority is exactly zero -- full lock holds it and nothing shrinks it, so
-// the only way out is to pull forward. That is a jackknife by another name, and the whole promise
-// of the assist is that you cannot get into one. So the command stops short of the limit and keeps
-// the rest as unwind authority. It costs about a quarter of the trailer's tightest turn.
-var FOLD_HEADROOM = 0.8;
-function setTrailerSteer(on) { TRAILER_STEER = !!on; return TRAILER_STEER; }
-
 function makeRig(x, y, angle) {
 	var r = {
 		x: x, y: y, angle: angle, speed: 0, steer: 0,
@@ -244,12 +222,6 @@ function makeRig(x, y, angle) {
 		trailer: { x: 0, y: 0, angle: angle, len: TRUCK.trailerLen, wid: TRUCK.trailerWid,
 			kingpinToAxle: SPEC.kingpinToAxle * SCALE }
 	};
-	// The tightest fold the wheel can hold: sin(fold) = (D/W) tan(maxSteer). It is the same number
-	// the preset readout calls "settles at", the forward equilibrium seen from the other direction.
-	var hold = (SPEC.kingpinToAxle / PRESET.wheelbase) * Math.tan(SPEC.maxSteer);
-	r.maxFold = Math.asin(Math.min(1, hold) * FOLD_HEADROOM);
-	r.targetFold = 0;
-	r.assisting = false;
 	syncTrailer(r);
 	return r;
 }
@@ -263,41 +235,18 @@ function syncTrailer(r) {
 function stepRig(r, drive, steerInput, dt) {
 	if (!(dt > 0)) throw new Error('stepRig needs a timestep in seconds, got ' + dt);
 
-	var fold = normAngle(r.angle - r.trailer.angle);
-	// The assist only exists where the question does: not driving forward. Forward the trailer
-	// just follows, so there is nothing to aim and the wheel goes back to being the wheel.
-	// Stopped counts as assisted: you aim the trailer first, then reverse, knob-first like the
-	// real thing -- and the solved wheel angle is visible on the steer axle before you move.
-	r.assisting = TRAILER_STEER && r.speed <= 0;
-
-	if (r.assisting) {
-		// Right sends the trailer clockwise, which is a NEGATIVE fold -- the same way classic
-		// countersteering eventually takes it, so a key means the same thing in both schemes.
-		if (steerInput) {
-			r.targetFold = clamp(r.targetFold - steerInput * r.steerRate * dt, -r.maxFold, r.maxFold);
-			if (Math.abs(r.targetFold) < r.steerRate * dt * 0.5) r.targetFold = 0;   // detent, as on the wheel
-		}
-		r.steer = clamp(Math.atan((r.wheelbase / r.trailer.kingpinToAxle) *
-			(Math.sin(fold) - FOLD_GAIN * (r.targetFold - fold))), -r.maxSteer, r.maxSteer);
-	} else {
-		// Pick the command up from wherever the rig actually is, so engaging mid-fold never snaps.
-		r.targetFold = clamp(fold, -r.maxFold, r.maxFold);
-		// The wheel is a position, not a nudge: it holds wherever you leave it, at any speed, and
-		// you cancel a turn by steering back. Nothing springs to centre on its own.
-		if (steerInput) {
-			r.steer = clamp(r.steer + steerInput * r.steerRate * dt, -r.maxSteer, r.maxSteer);
-			// Detent, so centre is findable by feel: land within half a step of zero and you get
-			// exactly zero. It costs one frame passing through, it never blocks steering past it.
-			if (Math.abs(r.steer) < r.steerRate * dt * 0.5) r.steer = 0;
-		}
+	// The wheel is a position, not a nudge: it holds wherever you leave it, at any speed, and
+	// you cancel a turn by steering back. Nothing springs to centre on its own.
+	if (steerInput) {
+		r.steer = clamp(r.steer + steerInput * r.steerRate * dt, -r.maxSteer, r.maxSteer);
+		// Detent, so centre is findable by feel: land within half a step of zero and you get
+		// exactly zero. It costs one frame passing through, it never blocks steering past it.
+		if (Math.abs(r.steer) < r.steerRate * dt * 0.5) r.steer = 0;
 	}
 
-	// Reverse runs faster under the assist, and accelerates harder in the same proportion so the
-	// ramp does not eat the gain. Only the classic scheme pays the fold clock for speed.
-	var boost = r.assisting ? SPEC.assistRevSpeed / SPEC.revSpeed : 1;
 	if (drive > 0) r.speed = Math.min(r.speed + r.accel * dt, r.maxSpeed);
-	else if (drive < 0) r.speed = Math.max(r.speed - r.accel * boost * dt, -r.reverseSpeed * boost);
-	else r.speed = towardZero(r.speed, r.friction * boost * dt);
+	else if (drive < 0) r.speed = Math.max(r.speed - r.accel * dt, -r.reverseSpeed);
+	else r.speed = towardZero(r.speed, r.friction * dt);
 
 	var travel = r.speed * dt;
 	r.angle = normAngle(r.angle + (travel / r.wheelbase) * Math.tan(r.steer));
@@ -411,9 +360,11 @@ if (typeof window === 'undefined') {
 			stepRig(c, -1, 0, DT);
 			if (foldAt === null && Math.abs(normAngle(c.angle - c.trailer.angle)) > 1.44) foldAt = i * DT;
 		}
-		// 2.5s, not 4s: the 4s bar was my own guess, and a faster reverse was explicitly wanted.
-		// This still catches the 1.1s original that made the game unplayable in the first place.
-		assert.ok(foldAt === null || foldAt > 2.5, 'full-lock reverse must take over 2.5s to fold, got ' + foldAt + tag);
+		// 2.2s, not 4s and no longer 2.5s. Both earlier bars were guesses, and both were set when
+		// braking was 0.7g and the truck slid 17px after you released the key. It now stops in
+		// 3.8px, so a given number of seconds buys far more than it used to. This still catches
+		// the 1.1s original that made the game unplayable in the first place.
+		assert.ok(foldAt === null || foldAt > 2.2, 'full-lock reverse must take over 2.2s to fold, got ' + foldAt + tag);
 
 		// Same, at the fastest the reverse dial goes: it must not be able to make the fold
 		// uncatchable, which is the one thing it could quietly ruin.
@@ -470,73 +421,16 @@ if (typeof window === 'undefined') {
 		}
 		assert.ok(sawOvershoot, 'stepRig must report articulation past the limit' + tag);
 
-		// Trailer-direction steering. The property that matters is the OPPOSITE of the one above:
-		// under the assist a held direction must SETTLE the fold on the commanded angle instead of
-		// running away, at every preset, and it must never reach the jackknife stop.
-		setTrailerSteer(true);
-		var ts = makeRig(400, 300, 0), worstFold = 0;
-		for (i = 0; i < 12 / DT; i++) {
-			stepRig(ts, -1, 1, DT);
-			worstFold = Math.max(worstFold, Math.abs(normAngle(ts.angle - ts.trailer.angle)));
-		}
-		assert.strictEqual(ts.targetFold, -ts.maxFold, 'holding right must wind the command to the stop' + tag);
-		assert.ok(Math.abs(normAngle(ts.angle - ts.trailer.angle) - ts.targetFold) < 0.05,
-			'the fold must settle on the commanded angle, got ' +
-			normAngle(ts.angle - ts.trailer.angle).toFixed(3) + ' for ' + ts.targetFold.toFixed(3) + tag);
-		assert.ok(worstFold < MAX_ARTICULATION, 'the assist must never reach the fold stop' + tag);
-
-		// Right sends the trailer clockwise -- the same way classic countersteering takes it, so
-		// the key does not change meaning when the scheme does.
-		var was = ts.trailer.angle;
-		stepRig(ts, -1, 0, DT);
-		assert.ok(normAngle(ts.trailer.angle - was) > 0, 'right must swing the trailer clockwise' + tag);
-
-		// And the fold must UNWIND on the way back, in reverse, without pulling forward. This is
-		// what the headroom buys: at the tightest holdable fold the wheel has no authority left
-		// and left would do nothing at all.
-		for (i = 0; i < 30 / DT; i++) stepRig(ts, -1, -1, DT);
-		assert.ok(normAngle(ts.angle - ts.trailer.angle) > 0.3,
-			'left must unwind the fold in reverse, got ' +
-			normAngle(ts.angle - ts.trailer.angle).toFixed(3) + tag);
-
-		// Engaging mid-fold must adopt the fold it finds, so the TRAILER never lurches. The wheel
-		// does jump, to the angle that holds that fold -- that is the machine taking the wheel,
-		// and it is on screen on the steer axle.
-		var mid = makeRig(400, 300, 0);
-		setTrailerSteer(false);
-		mid.trailer.angle = -0.25;      // inside every preset's cap; a wider fold clamps to it and unwinds
-		stepRig(mid, -1, 0, DT);
-		setTrailerSteer(true);
-		stepRig(mid, -1, 0, DT);
-		assert.ok(Math.abs(mid.targetFold - normAngle(mid.angle - mid.trailer.angle)) < 0.02,
-			'engaging the assist must adopt the fold it finds' + tag);
-
-		// Forward is untouched: the assist is a reverse-only scheme, and A/D is still the wheel.
-		var fw = makeRig(400, 300, 0);
-		for (i = 0; i < 1 / DT; i++) stepRig(fw, 1, 1, DT);
-		assert.ok(fw.steer > 0 && !fw.assisting, 'forward must stay classic under the assist' + tag);
-
-		// Reverse is faster under the assist, and only because the fold clock that caps the classic
-		// scheme does not apply to a scheme that cannot fold. Same three seconds, measured twice.
-		var quick = makeRig(0, 0, 0);
-		for (i = 0; i < 3 / DT; i++) stepRig(quick, -1, 0, DT);
-		setTrailerSteer(false);
-		var plod = makeRig(0, 0, 0);
-		for (i = 0; i < 3 / DT; i++) stepRig(plod, -1, 0, DT);
-		assert.ok(Math.abs(quick.x) > Math.abs(plod.x) * 1.5, 'the assist must reverse faster than classic' + tag);
-
 		// Releasing the key must stop the truck inside roughly the gap between parked trucks. This
 		// is the assertion that catches a speed change quietly ruining the stopping distance again.
-		setTrailerSteer(true);
 		var st2 = makeRig(0, 0, 0);
 		for (i = 0; i < 3 / DT; i++) stepRig(st2, -1, 0, DT);
 		var stopFrom = st2.x;
 		for (i = 0; i < 3 / DT && st2.speed !== 0; i++) stepRig(st2, 0, 0, DT);
 		var gap = (SPEC.lot.rowPitch - SPEC.rigWid) * SCALE;
-		assert.ok(Math.abs(st2.x - stopFrom) < gap * 2,
-			'coast to a stop must fit twice the gap between parked trucks, got ' +
+		assert.ok(Math.abs(st2.x - stopFrom) < gap * 1.6,
+			'coast to a stop must fit 1.6x the gap between parked trucks, got ' +
 			Math.abs(st2.x - stopFrom).toFixed(1) + 'px against ' + gap.toFixed(1) + 'px' + tag);
-		setTrailerSteer(false);
 
 		// No NaN anywhere.
 		var n = makeRig(LEVEL.start.x, LEVEL.start.y, LEVEL.start.angle);
