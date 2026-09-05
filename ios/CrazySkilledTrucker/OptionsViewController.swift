@@ -28,10 +28,12 @@ final class OptionsViewController: UIViewController
 	private let swapSwitch = UISwitch()
 	private let particlesSwitch = UISwitch()
 	private let soundControl = UISegmentedControl(items: Constants.soundNames)
+	private let lotEdgeControl = UISegmentedControl(items: Constants.lotEdgeNames)
 
 	private enum Constants
 	{
 		static let soundNames = ["Off", "Synth", "Samples"]
+		static let lotEdgeNames = ["Open", "Kerb"]
 		static let sheetSize = CGSize(width: 540, height: 620)
 		static let margin: CGFloat = 24
 		static let rowSpacing: CGFloat = 22
@@ -62,6 +64,7 @@ final class OptionsViewController: UIViewController
 		swapSwitch.isOn = Options.swapPads
 		particlesSwitch.isOn = Options.particlesEnabled
 		soundControl.selectedSegmentIndex = Options.soundChoice.rawValue
+		lotEdgeControl.selectedSegmentIndex = Options.lotEdge.rawValue
 
 		for caption in [forwardCaption, reverseCaption]
 		{
@@ -77,12 +80,14 @@ final class OptionsViewController: UIViewController
 		swapSwitch.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
 		particlesSwitch.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
 		soundControl.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
+		lotEdgeControl.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
 
 		let stack = UIStackView(arrangedSubviews: [
 			titled("Handling preset", presetControl),
 			titled("Forward speed", forwardSlider, caption: forwardCaption),
 			titled("Reverse speed", reverseSlider, caption: reverseCaption),
 			row("Jackknife ends the run", jackknifeSwitch),
+			titled("Lot edge (open: drive anywhere, kerb: a scrape on the edge ends the run)", lotEdgeControl),
 			row("Swap the pads (drive on the right)", swapSwitch),
 			row("Particle effects", particlesSwitch),
 			titled("Sound engine", soundControl)
@@ -136,6 +141,7 @@ final class OptionsViewController: UIViewController
 		Options.swapPads = swapSwitch.isOn
 		Options.particlesEnabled = particlesSwitch.isOn
 		Options.soundChoice = SoundChoice(rawValue: soundControl.selectedSegmentIndex) ?? .off
+		Options.lotEdge = LotEdge(rawValue: lotEdgeControl.selectedSegmentIndex) ?? .open
 		refreshCaptions()
 	}
 

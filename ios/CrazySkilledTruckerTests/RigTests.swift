@@ -383,6 +383,16 @@ final class RigTests: XCTestCase
 		}
 	}
 
+	func testLotEdgeDecidesWhetherTheWallsCollide()
+	{
+		let open = World(preset: .standard, lotEdge: .open)
+		XCTAssertEqual(open.obstacles.count, open.lot.parked.count * 2,
+			"an open lot collides only with the parked trucks")
+		let kerb = World(preset: .standard, lotEdge: .kerb)
+		XCTAssertEqual(kerb.obstacles.count, kerb.lot.parked.count * 2 + kerb.lot.walls.count,
+			"a kerb adds the four edges")
+	}
+
 	/// An obstacle wider than its own picture is invisible by construction: no screenshot
 	/// and no playtest can see it. So the sizes are measured rather than trusted.
 	func testParkedBoxesAreTheSizeTheyAreDrawn()

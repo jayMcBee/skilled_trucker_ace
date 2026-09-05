@@ -95,6 +95,14 @@ enum Canvas
 	static let height = 650.0
 }
 
+/// What the edge of the lot does. Open: the asphalt goes on and nothing stops the
+/// truck. Kerb: the four edges collide and a scrape on them ends the run.
+enum LotEdge: Int
+{
+	case open = 0
+	case kerb = 1
+}
+
 // MARK: - Presets
 
 /// `pixelsPerMetre` is zoom and nothing else. `wheelbase` is handling and nothing
@@ -496,6 +504,7 @@ struct World
 
 	let preset: Preset
 	let tuning: Tuning
+	let lotEdge: LotEdge
 	let scale: Double
 	let dimensions: TruckDimensions
 	let level: Level
@@ -536,10 +545,11 @@ struct World
 
 	// MARK: - Init
 
-	init(preset: Preset, tuning: Tuning = Tuning())
+	init(preset: Preset, tuning: Tuning = Tuning(), lotEdge: LotEdge = .open)
 	{
 		self.preset = preset
 		self.tuning = tuning
+		self.lotEdge = lotEdge
 		let scale = preset.pixelsPerMetre
 		self.scale = scale
 
@@ -576,7 +586,7 @@ struct World
 							  leftRowX: leftRowX, rightRowX: rightRowX, start: startPlacement)
 		self.level = World.centred(uncentred, dimensions: dimensions)
 		self.lot = World.buildLot(level: self.level, dimensions: dimensions)
-		self.obstacles = World.obstacles(for: self.lot, dimensions: dimensions)
+		self.obstacles = World.obstacles(for: self.lot, dimensions: dimensions, lotEdge: lotEdge)
 	}
 
 	// MARK: - Public API
@@ -723,17 +733,21 @@ struct World
 				   bayHeading: bay.heading, parked: parked, walls: walls)
 	}
 
-	/// Parked boxes first, then walls. The self-check relies on that order.
-	private static func obstacles(for lot: Lot, dimensions: TruckDimensions) -> [ConvexQuad]
+	/// Parked boxes first, then the walls if the edge is a kerb. The self-check relies
+	/// on that order.
+	private static func obstacles(for lot: Lot, dimensions: TruckDimensions, lotEdge: LotEdge) -> [ConvexQuad]
 	{
 		var quads: [ConvexQuad] = []
 		for placement in lot.parked
 		{
 			quads.append(contentsOf: World.parkedBoxes(placement, dimensions: dimensions))
 		}
-		for wall in lot.walls
+		if lotEdge == .kerb
 		{
-			quads.append(Collision.rectangleCorners(wall))
+			for wall in lot.walls
+			{
+				quads.append(Collision.rectangleCorners(wall))
+			}
 		}
 		return quads
 	}

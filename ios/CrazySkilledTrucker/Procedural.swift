@@ -43,6 +43,9 @@ struct ProceduralTexture
 		static let glowInnerAlpha: CGFloat = 1
 		static let glowMidAlpha: CGFloat = 0.35
 		static let glowMidStop: CGFloat = 0.3
+		static let floorSubdirectory = "Floor"
+		/// Clear in the middle, night at the corners. Stops are (position, alpha).
+		static let vignetteStops: [(CGFloat, CGFloat)] = [(0, 0), (0.55, 0), (0.75, 0.25), (0.9, 0.55), (1, 0.85)]
 	}
 
 	// MARK: - Public API
@@ -70,6 +73,54 @@ struct ProceduralTexture
 			context.cgContext.drawRadialGradient(gradient, startCenter: centre, startRadius: 0,
 												 endCenter: centre, endRadius: size.width / 2,
 												 options: [])
+		}
+		let texture = SKTexture(image: image)
+		cache[key] = texture
+		return texture
+	}
+
+	/// A texture from a file in the bundle, at the root or in the Floor folder, so both
+	/// ways Xcode can copy a folder work. Nil when the file is not in the bundle.
+	static func bundled(_ name: String, extension fileExtension: String) -> SKTexture?
+	{
+		let key = "file:\(name).\(fileExtension)"
+		if let texture = cache[key]
+		{
+			return texture
+		}
+		let located = Bundle.main.url(forResource: name, withExtension: fileExtension)
+			?? Bundle.main.url(forResource: name, withExtension: fileExtension,
+							   subdirectory: Constants.floorSubdirectory)
+		guard let url = located,
+			  let image = UIImage(contentsOfFile: url.path)
+		else { return nil }
+		let texture = SKTexture(image: image)
+		cache[key] = texture
+		return texture
+	}
+
+	/// Black that thickens toward the edge, so the lot darkens into night at the screen
+	/// edge. Stretched over the screen as an ellipse by whoever draws it.
+	static func vignette(diameter: Int) -> SKTexture
+	{
+		let key = "vignette\(diameter)"
+		if let texture = cache[key]
+		{
+			return texture
+		}
+
+		let size = CGSize(width: diameter, height: diameter)
+		let image = UIGraphicsImageRenderer(size: size).image
+		{ context in
+			let colors = Constants.vignetteStops.map { UIColor.black.withAlphaComponent($0.1).cgColor } as CFArray
+			let stops = Constants.vignetteStops.map { $0.0 }
+			guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+											colors: colors, locations: stops)
+			else { return }
+			let centre = CGPoint(x: size.width / 2, y: size.height / 2)
+			context.cgContext.drawRadialGradient(gradient, startCenter: centre, startRadius: 0,
+												 endCenter: centre, endRadius: size.width / 2,
+												 options: [.drawsAfterEndLocation])
 		}
 		let texture = SKTexture(image: image)
 		cache[key] = texture

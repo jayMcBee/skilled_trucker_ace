@@ -70,11 +70,12 @@ final class GameScene: SKScene
 	}
 
 	private let worldLayer = SKNode()
-	private let lotLayer = SKEffectNode()
+	private let lotLayer = SKNode()
 	private let bayMarking = SKNode()
 	private let rigLayer = SKNode()
 	private let effectsLayer = SKNode()
 	private let hudLayer = SKNode()
+	private let vignette = SKSpriteNode(texture: ProceduralTexture.vignette(diameter: Constants.vignetteTextureDiameter))
 	private var trailerNode: TrailerNode
 	private var cabNode: CabNode
 	private let exhaust = SKEmitterNode()
@@ -110,7 +111,6 @@ final class GameScene: SKScene
 		/// The world box, as CGFloat, for everything that lays out in points.
 		static let canvasWidth = CGFloat(Canvas.width)
 		static let canvasHeight = CGFloat(Canvas.height)
-		static let canvasSize = CGSize(width: canvasWidth, height: canvasHeight)
 
 		/// Any scrape ends the run, so the win box is generous on angle and tight on
 		/// distance. All three mirror the web build exactly.
@@ -176,11 +176,13 @@ final class GameScene: SKScene
 		static let bayMarkingZ: CGFloat = 1
 		static let rigLayerZ: CGFloat = 5
 		static let effectsLayerZ: CGFloat = 8
+		static let vignetteZ: CGFloat = 12
 		static let hudLayerZ: CGFloat = 20
-		/// The ground and its markings sit below every truck shadow, which is at -1 in
-		/// its own truck.
-		static let groundZ: CGFloat = -2
-		static let wallZ: CGFloat = 2
+		/// Inside the lot layer: ground, then decals, then paint, then trucks at 0 with
+		/// their shadows at -1, then the lamp light over everything.
+		static let groundZ: CGFloat = -4
+		static let decalZ: CGFloat = -3
+		static let markingZ: CGFloat = -2
 		static let lampGlowZ: CGFloat = 3
 		static let cabAboveTrailerZ: CGFloat = 1
 		static let wedgeZ: CGFloat = 3
@@ -189,36 +191,72 @@ final class GameScene: SKScene
 		static let flashZ: CGFloat = 4
 		static let resultOverlayZ: CGFloat = 5
 		static let fullCircle: CGFloat = .pi * 2
-		static let asphaltNoiseSmoothness: CGFloat = 0.55
-		static let asphaltPatchSmoothness: CGFloat = 0.92
-		static let asphaltBlend: CGFloat = 0.9
-		static let asphaltPatchAlpha: CGFloat = 0.45
-		static let stainCount = 7
-		static let stainWidthRange: ClosedRange<CGFloat> = 60 ... 220
-		static let stainHeightRange: ClosedRange<CGFloat> = 30 ... 90
-		static let scuffCount = 18
-		static let scuffEndScatter = 80.0
-		static let scuffControlScatter = 60.0
-		static let scuffAlphaRange: ClosedRange<CGFloat> = 0.05 ... 0.13
-		static let scuffWidthRange: ClosedRange<CGFloat> = 3 ... 7
-		static let crackCount = 16
-		static let crackSegmentRange = 4 ... 9
-		static let crackTurnRange: ClosedRange<CGFloat> = -0.9 ... 0.9
-		static let crackStepRange: ClosedRange<CGFloat> = 12 ... 38
-		static let crackWidth: CGFloat = 1.2
-		static let crackHighlightWidth: CGFloat = 2.5
-		static let crackHighlightOffset = CGPoint(x: 1, y: -1)
-		static let stallDashPattern: [CGFloat] = [14, 3, 6, 5]
-		static let stallDashPhaseStep: CGFloat = 5
-		static let stallLineWidth: CGFloat = 1.5
+
+		/// The asphalt goes on this many lots in every direction, so its edge is never seen.
+		static let groundCoverInLots: CGFloat = 3
+		/// One asphalt tile is this many world units. About 20 metres: the grain is gone
+		/// at this height and the mottling is what reads.
+		static let asphaltTileUnits: CGFloat = 128
+		static let grimeAlpha: CGFloat = 0.6
+		/// The decal PNGs were drawn at two pixels per world unit.
+		static let decalPixelsPerUnit: CGFloat = 2
+		static let asphaltFile = "asphalt"
+		static let grimeFile = "grime"
+		static let crackFile = "crack"
+		static let stainFile = "stain"
+		static let tyreFile = "tyre"
+		static let puddleFile = "puddle"
+		static let paintLineFile = "paintline"
+		static let jpegExtension = "jpg"
+		static let pngExtension = "png"
+		static let crackVariants = 4
+		static let stainVariants = 4
+		static let tyreVariants = 3
+		static let puddleVariants = 2
+		static let crackCount = 40
+		static let crackScaleRange: ClosedRange<CGFloat> = 0.5 ... 1.0
+		static let crackAlphaRange: ClosedRange<CGFloat> = 0.5 ... 0.9
+		static let stainAtSlotMouthChance = 0.6
+		static let stainScaleRange: ClosedRange<CGFloat> = 0.3 ... 0.55
+		static let stainAlphaRange: ClosedRange<CGFloat> = 0.7 ... 1.0
+		static let stainInLaneCount = 6
+		static let laneStainScaleRange: ClosedRange<CGFloat> = 0.25 ... 0.5
+		/// The oil lands under the engine, which is this many cab lengths ahead of the cab centre.
+		static let stainAheadOfCabInCabLengths = 0.9
+		static let stainScatter = 12.0
+		static let tyreMarkCount = 12
+		static let tyreMarkScaleRange: ClosedRange<CGFloat> = 0.5 ... 1.0
+		static let tyreMarkAlphaRange: ClosedRange<CGFloat> = 0.35 ... 0.7
+		static let tyreMarkEntryAngleRange: ClosedRange<CGFloat> = 0.26 ... 0.79
+		static let straightTyreMarkCount = 5
+		static let straightTyreMarkWobble: CGFloat = 0.1
+		static let straightTyreMarkScaleRange: ClosedRange<CGFloat> = 0.8 ... 1.2
+		static let straightTyreMarkAlphaRange: ClosedRange<CGFloat> = 0.3 ... 0.6
+		static let puddleCount = 14
+		static let puddleScaleRange: ClosedRange<CGFloat> = 0.6 ... 1.3
+		static let stallLineWidth: CGFloat = 2.4
+		static let stallLineAlphaRange: ClosedRange<CGFloat> = 0.4 ... 0.75
 		static let bayOutlineLengthFraction = 1.05
 		static let bayOutlineWidthFraction = 1.07
-		static let bayLineWidthInRigWidths = 0.05
-		static let bayMinimumLineWidth = 2.0
-		static let bayGlowWidth: CGFloat = 1
+		static let bayLineWidth: CGFloat = 3
+		static let bayLineAlpha: CGFloat = 0.9
 		static let bayFontSizeInRigWidths = 0.19
 		static let bayMinimumFontSize = 8.0
+		static let kerbLineWidth: CGFloat = 3
+		static let kerbLineAlpha: CGFloat = 0.55
 		static let lampGlowTextureDiameter = 128
+		static let lampWideGlowAlpha: CGFloat = 0.11
+		static let lampCoreGlowDiameterFraction = 0.8
+		static let lampCoreGlowAlpha: CGFloat = 0.16
+		static let lampHeadDiameter: CGFloat = 7
+		static let lampHeadAlpha: CGFloat = 0.9
+		/// Stretch of the vignette past the screen, so its clear middle covers the lot
+		/// and its dark rim reaches the corners.
+		static let vignetteSpread: CGFloat = 1.15
+		static let vignetteTextureDiameter = 512
+		/// A little zoomed out, so a strip of the outer asphalt shows and the lot reads
+		/// as part of something larger.
+		static let worldZoom: CGFloat = 0.94
 
 		static let exhaustTextureDiameter = 32
 		static let exhaustLifetime: CGFloat = 1.4
@@ -265,18 +303,11 @@ final class GameScene: SKScene
 											   alpha: 1, alphaSpeed: -0.8, isAdditive: true, spin: 0)
 
 		static let voidColour = SKColor(red: 0.03, green: 0.04, blue: 0.06, alpha: 1)
-		static let asphaltColour = SKColor(red: 0.24, green: 0.26, blue: 0.33, alpha: 1)
-		static let wallColour = SKColor(red: 0.12, green: 0.16, blue: 0.23, alpha: 1)
-		static let kerbColour = SKColor(white: 1, alpha: 0.22)
-		static let stallLineColour = SKColor(white: 1, alpha: 0.30)
 		static let bayColour = SKColor(red: 0.92, green: 0.70, blue: 0.03, alpha: 1)
 		static let bayTextColour = SKColor(red: 0.92, green: 0.70, blue: 0.03, alpha: 0.35)
-		static let lampGlowColour = SKColor(red: 1, green: 0.76, blue: 0.24, alpha: 1)
-		static let lampGlowAlpha: CGFloat = 0.13
-		static let crackColour = SKColor(white: 0, alpha: 0.55)
-		static let crackHighlightColour = SKColor(white: 1, alpha: 0.05)
-		static let scuffColour = SKColor(white: 0, alpha: 1)
-		static let stainColour = SKColor(white: 0, alpha: 0.16)
+		static let lampGlowColour = SKColor(red: 1, green: 0.75, blue: 0.31, alpha: 1)
+		static let lampHeadColour = SKColor(red: 1, green: 0.93, blue: 0.75, alpha: 1)
+		static let stallPaintColour = SKColor(white: 1, alpha: 1)
 		static let jammedColour = SKColor(red: 0.98, green: 0.75, blue: 0.14, alpha: 1)
 		static let goodColour = SKColor(red: 0.64, green: 0.90, blue: 0.21, alpha: 1)
 		static let neutralColour = SKColor(red: 0.22, green: 0.74, blue: 0.97, alpha: 1)
@@ -314,7 +345,7 @@ final class GameScene: SKScene
 
 	override init(size: CGSize)
 	{
-		let world = World(preset: Options.preset, tuning: Options.tuning)
+		let world = World(preset: Options.preset, tuning: Options.tuning, lotEdge: Options.lotEdge)
 		self.world = world
 		self.rig = Rig(at: world.level.start, world: world)
 		self.trailerNode = TrailerNode(dimensions: world.dimensions,
@@ -335,7 +366,6 @@ final class GameScene: SKScene
 	override func didMove(to view: SKView)
 	{
 		lotLayer.zPosition = Constants.lotLayerZ
-		lotLayer.shouldRasterize = true
 		bayMarking.zPosition = Constants.bayMarkingZ
 		rigLayer.zPosition = Constants.rigLayerZ
 		effectsLayer.zPosition = Constants.effectsLayerZ
@@ -345,6 +375,8 @@ final class GameScene: SKScene
 		worldLayer.addChild(rigLayer)
 		worldLayer.addChild(effectsLayer)
 		addChild(worldLayer)
+		vignette.zPosition = Constants.vignetteZ
+		addChild(vignette)
 		addChild(hudLayer)
 
 		buildLot()
@@ -417,9 +449,10 @@ final class GameScene: SKScene
 	{
 		let wantedPreset = Options.preset
 		let wantedTuning = Options.tuning
-		if wantedPreset != world.preset || wantedTuning != world.tuning
+		let wantedEdge = Options.lotEdge
+		if wantedPreset != world.preset || wantedTuning != world.tuning || wantedEdge != world.lotEdge
 		{
-			world = World(preset: wantedPreset, tuning: wantedTuning)
+			world = World(preset: wantedPreset, tuning: wantedTuning, lotEdge: wantedEdge)
 			buildLot()
 			buildRig()
 			refreshSetupLabel()
@@ -481,118 +514,205 @@ final class GameScene: SKScene
 		bayMarking.removeAllActions()
 
 		var random = SeededRandom(seed: Constants.lotSeed)
-		let canvasSize = Constants.canvasSize
-		let canvasCentre = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
-
-		// Grain, then larger patches multiplied over it, so the surface reads as worn
-		// asphalt rather than a flat colour. Both are noise textures SpriteKit makes itself.
-		let grain = SKSpriteNode(texture: SKTexture(noiseWithSmoothness: Constants.asphaltNoiseSmoothness,
-													size: canvasSize, grayscale: true), size: canvasSize)
-		grain.position = canvasCentre
-		grain.color = Constants.asphaltColour
-		grain.colorBlendFactor = Constants.asphaltBlend
-		grain.zPosition = Constants.groundZ
-		lotLayer.addChild(grain)
-
-		let patches = SKSpriteNode(texture: SKTexture(noiseWithSmoothness: Constants.asphaltPatchSmoothness,
-													  size: canvasSize, grayscale: true), size: canvasSize)
-		patches.position = canvasCentre
-		patches.blendMode = .multiply
-		patches.alpha = Constants.asphaltPatchAlpha
-		patches.zPosition = Constants.groundZ
-		lotLayer.addChild(patches)
-
-		addStains(using: &random)
-		addScuffs(using: &random)
-		addCracks(using: &random)
-		addStallLines()
+		addGround()
+		addDecals(using: &random)
+		addStallLines(using: &random)
 		addBayMarking()
+		addKerb()
 		addParkedRigs()
-		addWalls()
 		addLampGlows()
 	}
 
-	private func addStains(using random: inout SeededRandom)
+	/// World units covered by ground: the lot and a margin of lots around it.
+	private var groundRect: CGRect
 	{
-		for _ in 0 ..< Constants.stainCount
+		let width = Constants.canvasWidth * Constants.groundCoverInLots
+		let height = Constants.canvasHeight * Constants.groundCoverInLots
+		return CGRect(x: (Constants.canvasWidth - width) / 2, y: (Constants.canvasHeight - height) / 2,
+					  width: width, height: height)
+	}
+
+	private var canvasCentre: CGPoint
+	{
+		return CGPoint(x: Constants.canvasWidth / 2, y: Constants.canvasHeight / 2)
+	}
+
+	/// The asphalt: one photographed tile in four rotations, as a tile map, which is one
+	/// draw call however far it goes. A large soft grime layer multiplied over it breaks
+	/// the repeat.
+	private func addGround()
+	{
+		let ground = groundRect
+		let tileSize = CGSize(width: Constants.asphaltTileUnits, height: Constants.asphaltTileUnits)
+
+		if let asphalt = ProceduralTexture.bundled(Constants.asphaltFile, extension: Constants.jpegExtension)
 		{
-			let stain = SKShapeNode(ellipseOf: CGSize(
-				width: CGFloat.random(in: Constants.stainWidthRange, using: &random),
-				height: CGFloat.random(in: Constants.stainHeightRange, using: &random)))
-			stain.position = CGPoint(x: CGFloat.random(in: 0 ... Constants.canvasWidth, using: &random),
-									 y: CGFloat.random(in: 0 ... Constants.canvasHeight, using: &random))
-			stain.zRotation = CGFloat.random(in: 0 ... CGFloat.pi, using: &random)
-			stain.fillColor = Constants.stainColour
-			stain.strokeColor = .clear
-			stain.zPosition = Constants.groundZ
-			lotLayer.addChild(stain)
+			asphalt.filteringMode = .linear
+			let rotations: [SKTileDefinitionRotation] = [.rotation0, .rotation90, .rotation180, .rotation270]
+			let definitions = rotations.map
+			{ rotation -> SKTileDefinition in
+				let definition = SKTileDefinition(texture: asphalt, size: tileSize)
+				definition.rotation = rotation
+				return definition
+			}
+			let group = SKTileGroup(rules: [SKTileGroupRule(adjacency: .adjacencyAll, tileDefinitions: definitions)])
+			let map = SKTileMapNode(tileSet: SKTileSet(tileGroups: [group]),
+									columns: Int(ceil(ground.width / tileSize.width)),
+									rows: Int(ceil(ground.height / tileSize.height)),
+									tileSize: tileSize)
+			map.fill(with: group)
+			map.position = canvasCentre
+			map.zPosition = Constants.groundZ
+			lotLayer.addChild(map)
+		}
+
+		if let grime = ProceduralTexture.bundled(Constants.grimeFile, extension: Constants.jpegExtension)
+		{
+			let patches = SKSpriteNode(texture: grime, size: ground.size)
+			patches.position = canvasCentre
+			patches.blendMode = .multiply
+			patches.alpha = Constants.grimeAlpha
+			patches.zPosition = Constants.groundZ
+			lotLayer.addChild(patches)
 		}
 	}
 
-	/// Tyre scuffs sweep from the lane into the slots, which is where trucks actually turn.
-	private func addScuffs(using random: inout SeededRandom)
+	private func variants(_ name: String, count: Int) -> [SKTexture]
 	{
-		let level = world.level
-		let laneLeft = level.leftRowX + world.dimensions.parkedRigLength / 2
-		let laneRight = level.rightRowX - world.dimensions.parkedRigLength / 2
-		let scatter = Constants.scuffEndScatter
-		let bend = Constants.scuffControlScatter
-		for _ in 0 ..< Constants.scuffCount
-		{
-			let startX = Double.random(in: laneLeft ... laneRight, using: &random)
-			let startY = Double.random(in: level.firstSlotY ... level.start.position.y, using: &random)
-			let towardLeft = Bool.random(using: &random)
-			let endX = towardLeft ? level.leftRowX : level.rightRowX
-			let endY = startY + Double.random(in: -scatter ... scatter, using: &random)
-			let control = Point(x: (startX + endX) / 2, y: startY + Double.random(in: -bend ... bend, using: &random))
-
-			let path = CGMutablePath()
-			path.move(to: scenePosition(Point(x: startX, y: startY)))
-			path.addQuadCurve(to: scenePosition(Point(x: endX, y: endY)), control: scenePosition(control))
-			let scuff = SKShapeNode(path: path)
-			scuff.strokeColor = Constants.scuffColour
-			scuff.alpha = CGFloat.random(in: Constants.scuffAlphaRange, using: &random)
-			scuff.lineWidth = CGFloat.random(in: Constants.scuffWidthRange, using: &random)
-			scuff.lineCap = .round
-			scuff.zPosition = Constants.groundZ
-			lotLayer.addChild(scuff)
+		return (1 ... count).compactMap
+		{ index in
+			ProceduralTexture.bundled("\(name)\(index)", extension: Constants.pngExtension)
 		}
 	}
 
-	private func addCracks(using random: inout SeededRandom)
+	/// One decal sprite. `scale` is relative to the size the PNG was drawn at.
+	private func addDecal(_ texture: SKTexture, at position: CGPoint, scale: CGFloat, rotation: CGFloat,
+						  alpha: CGFloat)
 	{
+		let pixels = texture.size()
+		let sprite = SKSpriteNode(texture: texture,
+								  size: CGSize(width: pixels.width * scale / Constants.decalPixelsPerUnit,
+											   height: pixels.height * scale / Constants.decalPixelsPerUnit))
+		sprite.position = position
+		sprite.zRotation = rotation
+		sprite.alpha = alpha
+		sprite.zPosition = Constants.decalZ
+		lotLayer.addChild(sprite)
+	}
+
+	private func randomPoint(in rect: CGRect, using random: inout SeededRandom) -> CGPoint
+	{
+		return CGPoint(x: CGFloat.random(in: rect.minX ... rect.maxX, using: &random),
+					   y: CGFloat.random(in: rect.minY ... rect.maxY, using: &random))
+	}
+
+	/// Cracks and puddles anywhere. Oil where the tractors stand and in the lane. Tyre
+	/// marks in the lane, most of them at the angle of a truck swinging into a slot.
+	private func addDecals(using random: inout SeededRandom)
+	{
+		let cracks = variants(Constants.crackFile, count: Constants.crackVariants)
+		let stains = variants(Constants.stainFile, count: Constants.stainVariants)
+		let tyres = variants(Constants.tyreFile, count: Constants.tyreVariants)
+		let puddles = variants(Constants.puddleFile, count: Constants.puddleVariants)
+		guard !cracks.isEmpty, !stains.isEmpty, !tyres.isEmpty, !puddles.isEmpty
+		else { return }
+
+		let ground = groundRect
 		for _ in 0 ..< Constants.crackCount
 		{
-			var point = CGPoint(x: CGFloat.random(in: 0 ... Constants.canvasWidth, using: &random),
-								y: CGFloat.random(in: 0 ... Constants.canvasHeight, using: &random))
-			var direction = CGFloat.random(in: 0 ... Constants.fullCircle, using: &random)
-			let path = CGMutablePath()
-			path.move(to: point)
-			for _ in 0 ..< Int.random(in: Constants.crackSegmentRange, using: &random)
-			{
-				direction += CGFloat.random(in: Constants.crackTurnRange, using: &random)
-				let step = CGFloat.random(in: Constants.crackStepRange, using: &random)
-				point = CGPoint(x: point.x + cos(direction) * step, y: point.y + sin(direction) * step)
-				path.addLine(to: point)
-			}
-			let highlight = SKShapeNode(path: path)
-			highlight.strokeColor = Constants.crackHighlightColour
-			highlight.lineWidth = Constants.crackHighlightWidth
-			highlight.position = Constants.crackHighlightOffset
-			highlight.zPosition = Constants.groundZ
-			lotLayer.addChild(highlight)
+			addDecal(cracks.randomElement(using: &random) ?? cracks[0], at: randomPoint(in: ground, using: &random),
+					 scale: CGFloat.random(in: Constants.crackScaleRange, using: &random),
+					 rotation: CGFloat.random(in: 0 ... Constants.fullCircle, using: &random),
+					 alpha: CGFloat.random(in: Constants.crackAlphaRange, using: &random))
+		}
+		for _ in 0 ..< Constants.puddleCount
+		{
+			addDecal(puddles.randomElement(using: &random) ?? puddles[0], at: randomPoint(in: ground, using: &random),
+					 scale: CGFloat.random(in: Constants.puddleScaleRange, using: &random),
+					 rotation: CGFloat.random(in: 0 ... Constants.fullCircle, using: &random), alpha: 1)
+		}
 
-			let crack = SKShapeNode(path: path)
-			crack.strokeColor = Constants.crackColour
-			crack.lineWidth = Constants.crackWidth
-			crack.zPosition = Constants.groundZ
-			lotLayer.addChild(crack)
+		let level = world.level
+		let cabOffset = world.dimensions.parkedRigLength / 2 - world.dimensions.cabLength / 2
+			+ world.dimensions.cabLength * Constants.stainAheadOfCabInCabLengths
+		for side in 0 ... 1
+		{
+			for index in 0 ..< LotSpec.slotCount
+			{
+				let slot = World.slotCentre(index, side: side, level: level)
+				let isTheBay = side == 0 && index == LotSpec.targetSlot
+				if !isTheBay && Double.random(in: 0 ... 1, using: &random) > Constants.stainAtSlotMouthChance
+				{
+					continue
+				}
+				let scatter = Constants.stainScatter
+				let spot = Point(x: slot.position.x + cos(slot.heading) * cabOffset
+									+ Double.random(in: -scatter ... scatter, using: &random),
+								 y: slot.position.y + sin(slot.heading) * cabOffset
+									+ Double.random(in: -scatter ... scatter, using: &random))
+				addDecal(stains.randomElement(using: &random) ?? stains[0], at: scenePosition(spot),
+						 scale: CGFloat.random(in: Constants.stainScaleRange, using: &random),
+						 rotation: CGFloat.random(in: 0 ... Constants.fullCircle, using: &random),
+						 alpha: CGFloat.random(in: Constants.stainAlphaRange, using: &random))
+			}
+		}
+
+		let laneLeft = level.leftRowX + world.dimensions.parkedRigLength / 2
+		let laneRight = level.rightRowX - world.dimensions.parkedRigLength / 2
+		let laneTop = level.firstSlotY
+		let laneBottom = level.start.position.y
+		let lane = CGRect(x: laneLeft, y: Canvas.height - laneBottom,
+						  width: laneRight - laneLeft, height: laneBottom - laneTop)
+		for _ in 0 ..< Constants.stainInLaneCount
+		{
+			addDecal(stains.randomElement(using: &random) ?? stains[0], at: randomPoint(in: lane, using: &random),
+					 scale: CGFloat.random(in: Constants.laneStainScaleRange, using: &random),
+					 rotation: CGFloat.random(in: 0 ... Constants.fullCircle, using: &random),
+					 alpha: CGFloat.random(in: Constants.stainAlphaRange, using: &random))
+		}
+		let alongTheLane = CGFloat.pi / 2
+		for _ in 0 ..< Constants.tyreMarkCount
+		{
+			let swing = CGFloat.random(in: Constants.tyreMarkEntryAngleRange, using: &random)
+				* (Bool.random(using: &random) ? 1 : -1)
+			addDecal(tyres.randomElement(using: &random) ?? tyres[0], at: randomPoint(in: lane, using: &random),
+					 scale: CGFloat.random(in: Constants.tyreMarkScaleRange, using: &random),
+					 rotation: alongTheLane + swing,
+					 alpha: CGFloat.random(in: Constants.tyreMarkAlphaRange, using: &random))
+		}
+		let wobbleLimit = Constants.straightTyreMarkWobble
+		for _ in 0 ..< Constants.straightTyreMarkCount
+		{
+			let wobble = CGFloat.random(in: -wobbleLimit ... wobbleLimit, using: &random)
+			addDecal(tyres.randomElement(using: &random) ?? tyres[0], at: randomPoint(in: lane, using: &random),
+					 scale: CGFloat.random(in: Constants.straightTyreMarkScaleRange, using: &random),
+					 rotation: alongTheLane + wobble,
+					 alpha: CGFloat.random(in: Constants.straightTyreMarkAlphaRange, using: &random))
 		}
 	}
 
-	/// Worn stall lines between the slots, dashed so they read as paint that has been
-	/// driven over for years.
-	private func addStallLines()
+	/// One strip of eroded paint from `start` to `end`, in canvas units.
+	private func paintLine(from start: Point, to end: Point, width: CGFloat, colour: SKColor, alpha: CGFloat,
+						   using random: inout SeededRandom) -> SKSpriteNode?
+	{
+		guard let paint = ProceduralTexture.bundled(Constants.paintLineFile, extension: Constants.pngExtension)
+		else { return nil }
+		let from = scenePosition(start)
+		let to = scenePosition(end)
+		let line = SKSpriteNode(texture: paint, size: CGSize(width: hypot(to.x - from.x, to.y - from.y), height: width))
+		line.position = CGPoint(x: (from.x + to.x) / 2, y: (from.y + to.y) / 2)
+		line.zRotation = atan2(to.y - from.y, to.x - from.x)
+		line.color = colour
+		line.colorBlendFactor = 1
+		line.alpha = alpha
+		// Flipping picks a different stretch of the erosion, so no two lines wear alike.
+		line.xScale = Bool.random(using: &random) ? 1 : -1
+		return line
+	}
+
+	/// Stall lines between the slots, worn the way paint that has been driven over for
+	/// years is worn.
+	private func addStallLines(using random: inout SeededRandom)
 	{
 		let level = world.level
 		let halfLength = world.dimensions.parkedRigLength / 2
@@ -601,22 +721,19 @@ final class GameScene: SKScene
 			for index in 0 ... LotSpec.slotCount
 			{
 				let y = level.firstSlotY + level.rowPitch * (Double(index) - 0.5)
-				let path = CGMutablePath()
-				path.move(to: scenePosition(Point(x: rowX - halfLength, y: y)))
-				path.addLine(to: scenePosition(Point(x: rowX + halfLength, y: y)))
-				let dashed = path.copy(dashingWithPhase: CGFloat(index) * Constants.stallDashPhaseStep,
-									   lengths: Constants.stallDashPattern)
-				let line = SKShapeNode(path: dashed)
-				line.strokeColor = Constants.stallLineColour
-				line.lineWidth = Constants.stallLineWidth
-				line.zPosition = Constants.groundZ
+				guard let line = paintLine(from: Point(x: rowX - halfLength, y: y), to: Point(x: rowX + halfLength, y: y),
+										   width: Constants.stallLineWidth, colour: Constants.stallPaintColour,
+										   alpha: CGFloat.random(in: Constants.stallLineAlphaRange, using: &random),
+										   using: &random)
+				else { continue }
+				line.zPosition = Constants.markingZ
 				lotLayer.addChild(line)
 			}
 		}
 	}
 
-	/// Three sides, open toward the lane, the way a painted bay actually reads. It
-	/// pulses, so the eye finds the target without a HUD arrow.
+	/// Three sides of yellow paint, open toward the lane, the way a painted bay reads.
+	/// It pulses, so the eye finds the target without a HUD arrow.
 	private func addBayMarking()
 	{
 		let halfLength = world.dimensions.parkedRigLength / 2 * Constants.bayOutlineLengthFraction
@@ -629,19 +746,20 @@ final class GameScene: SKScene
 			return Point(x: bayCentre.x + cos(heading) * alongLength - sin(heading) * acrossWidth,
 						 y: bayCentre.y + sin(heading) * alongLength + cos(heading) * acrossWidth)
 		}
-		let path = CGMutablePath()
-		path.move(to: scenePosition(corner(halfLength, -halfWidth)))
-		path.addLine(to: scenePosition(corner(-halfLength, -halfWidth)))
-		path.addLine(to: scenePosition(corner(-halfLength, halfWidth)))
-		path.addLine(to: scenePosition(corner(halfLength, halfWidth)))
-
-		let outline = SKShapeNode(path: path)
-		outline.strokeColor = Constants.bayColour
-		outline.lineWidth = max(Constants.bayMinimumLineWidth,
-								world.dimensions.parkedRigWidth * Constants.bayLineWidthInRigWidths)
-		outline.lineCap = .square
-		outline.glowWidth = Constants.bayGlowWidth
-		bayMarking.addChild(outline)
+		var random = SeededRandom(seed: Constants.lotSeed + 1)
+		let sides = [
+			(corner(halfLength, -halfWidth), corner(-halfLength, -halfWidth)),
+			(corner(-halfLength, -halfWidth), corner(-halfLength, halfWidth)),
+			(corner(-halfLength, halfWidth), corner(halfLength, halfWidth))
+		]
+		for (start, end) in sides
+		{
+			if let line = paintLine(from: start, to: end, width: Constants.bayLineWidth, colour: Constants.bayColour,
+									alpha: Constants.bayLineAlpha, using: &random)
+			{
+				bayMarking.addChild(line)
+			}
+		}
 
 		let label = SKLabelNode(fontNamed: Constants.monoFont)
 		label.text = "RESERVED"
@@ -657,6 +775,32 @@ final class GameScene: SKScene
 			.fadeAlpha(to: Constants.bayPulseLowAlpha, duration: Constants.bayPulseDuration),
 			.fadeAlpha(to: 1, duration: Constants.bayPulseDuration)
 		])))
+	}
+
+	/// With a kerb, the collision edge is shown honestly: a worn yellow line along the
+	/// inside of each wall. With an open lot there is nothing to show.
+	private func addKerb()
+	{
+		guard world.lotEdge == .kerb,
+			  let firstWall = world.lot.walls.first
+		else { return }
+		var random = SeededRandom(seed: Constants.lotSeed + 2)
+		let inset = firstWall.height
+		let edges = [
+			(Point(x: inset, y: inset), Point(x: Canvas.width - inset, y: inset)),
+			(Point(x: inset, y: Canvas.height - inset), Point(x: Canvas.width - inset, y: Canvas.height - inset)),
+			(Point(x: inset, y: inset), Point(x: inset, y: Canvas.height - inset)),
+			(Point(x: Canvas.width - inset, y: inset), Point(x: Canvas.width - inset, y: Canvas.height - inset))
+		]
+		for (start, end) in edges
+		{
+			if let line = paintLine(from: start, to: end, width: Constants.kerbLineWidth, colour: Constants.bayColour,
+									alpha: Constants.kerbLineAlpha, using: &random)
+			{
+				line.zPosition = Constants.markingZ
+				lotLayer.addChild(line)
+			}
+		}
 	}
 
 	/// Placed from the same boxes they collide as: the centre of each box is the
@@ -685,32 +829,37 @@ final class GameScene: SKScene
 		}
 	}
 
-	private func addWalls()
-	{
-		for wall in world.lot.walls
-		{
-			let node = SKShapeNode(path: path(from: Collision.rectangleCorners(wall)))
-			node.fillColor = Constants.wallColour
-			node.strokeColor = Constants.kerbColour
-			node.lineWidth = 1
-			node.zPosition = Constants.wallZ
-			lotLayer.addChild(node)
-		}
-	}
-
+	/// Sodium lamps: a wide faint pool, a brighter core, and the lamp head itself.
 	private func addLampGlows()
 	{
+		let glowTexture = ProceduralTexture.softCircle(diameter: Constants.lampGlowTextureDiameter)
 		for lamp in Constants.lampGlows
 		{
-			let glow = SKSpriteNode(texture: ProceduralTexture.softCircle(diameter: Constants.lampGlowTextureDiameter),
-									size: CGSize(width: lamp.radius * 2, height: lamp.radius * 2))
-			glow.position = scenePosition(Point(x: lamp.x, y: lamp.y))
-			glow.color = Constants.lampGlowColour
-			glow.colorBlendFactor = 1
-			glow.blendMode = .add
-			glow.alpha = Constants.lampGlowAlpha
-			glow.zPosition = Constants.lampGlowZ
-			lotLayer.addChild(glow)
+			let position = scenePosition(Point(x: lamp.x, y: lamp.y))
+			let pools: [(diameter: CGFloat, alpha: CGFloat)] = [
+				(lamp.radius * 2, Constants.lampWideGlowAlpha),
+				(lamp.radius * 2 * Constants.lampCoreGlowDiameterFraction, Constants.lampCoreGlowAlpha)
+			]
+			for pool in pools
+			{
+				let glow = SKSpriteNode(texture: glowTexture, size: CGSize(width: pool.diameter, height: pool.diameter))
+				glow.position = position
+				glow.color = Constants.lampGlowColour
+				glow.colorBlendFactor = 1
+				glow.blendMode = .add
+				glow.alpha = pool.alpha
+				glow.zPosition = Constants.lampGlowZ
+				lotLayer.addChild(glow)
+			}
+			let head = SKSpriteNode(texture: glowTexture,
+									size: CGSize(width: Constants.lampHeadDiameter, height: Constants.lampHeadDiameter))
+			head.position = position
+			head.color = Constants.lampHeadColour
+			head.colorBlendFactor = 1
+			head.blendMode = .add
+			head.alpha = Constants.lampHeadAlpha
+			head.zPosition = Constants.lampGlowZ
+			lotLayer.addChild(head)
 		}
 	}
 
@@ -875,7 +1024,7 @@ final class GameScene: SKScene
 	/// corners of any iPad while the lot letterboxes in the middle.
 	private func layoutScreen()
 	{
-		let fit = min(size.width / Constants.canvasWidth, size.height / Constants.canvasHeight)
+		let fit = min(size.width / Constants.canvasWidth, size.height / Constants.canvasHeight) * Constants.worldZoom
 		worldLayer.setScale(fit)
 		worldBasePosition = CGPoint(x: (size.width - Constants.canvasWidth * fit) / 2,
 									y: (size.height - Constants.canvasHeight * fit) / 2)
@@ -909,6 +1058,8 @@ final class GameScene: SKScene
 		resultHint.position = CGPoint(x: centre.x, y: centre.y - Constants.resultSubtitleSize * Constants.resultHintDrop)
 		flash.size = size
 		flash.position = centre
+		vignette.size = CGSize(width: size.width * Constants.vignetteSpread, height: size.height * Constants.vignetteSpread)
+		vignette.position = centre
 	}
 
 	// MARK: - Private: simulation

@@ -58,6 +58,12 @@ struct Options
 		set { store.set(newValue, forKey: Constants.particlesEnabledKey) }
 	}
 
+	static var lotEdge: LotEdge
+	{
+		get { return LotEdge(rawValue: store.integer(forKey: Constants.lotEdgeKey)) ?? .open }
+		set { store.set(newValue.rawValue, forKey: Constants.lotEdgeKey) }
+	}
+
 	static var soundChoice: SoundChoice
 	{
 		get
@@ -95,6 +101,7 @@ struct Options
 		static let swapPadsKey = "swapPads"
 		static let particlesEnabledKey = "particlesEnabled"
 		static let soundChoiceKey = "soundChoice"
+		static let lotEdgeKey = "lotEdge"
 	}
 
 	// MARK: - Private
