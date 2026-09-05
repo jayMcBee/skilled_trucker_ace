@@ -62,12 +62,16 @@ struct GameOptions
 	/// A dial while the look is being found.
 	static var steeredWheelScale: Double
 	{
-		get { return double(forKey: Constants.steeredWheelScaleKey, fallback: Constants.defaultSteeredWheelScale) }
+		get
+		{
+			let stored = double(forKey: Constants.steeredWheelScaleKey, fallback: Constants.defaultSteeredWheelScale)
+			return clamped(stored, lowestSteeredWheelScale, highestSteeredWheelScale)
+		}
 		set { store.set(newValue, forKey: Constants.steeredWheelScaleKey) }
 	}
 
-	static let lowestSteeredWheelScale = 0.8
-	static let highestSteeredWheelScale = 2.0
+	static let lowestSteeredWheelScale = 1.5
+	static let highestSteeredWheelScale = 2.2
 
 	/// The lane runs left to right across the landscape screen, which fits it far
 	/// better than the tall strip the web canvas was.
@@ -124,7 +128,7 @@ struct GameOptions
 		static let lotAcrossScreenKey = "lotAcrossScreen"
 		static let steeredWheelScaleKey = "steeredWheelScale"
 		/// The baked tyre read as tiny on the player's cab. Found by play.
-		static let defaultSteeredWheelScale = 1.6
+		static let defaultSteeredWheelScale = 1.8
 	}
 
 	// MARK: - Private
