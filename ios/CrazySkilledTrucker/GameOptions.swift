@@ -144,7 +144,7 @@ struct GameOptions
 		static let steeredWheelScaleKey = "steeredWheelScale"
 		static let enginePitchKey = "enginePitch"
 		/// The rendered model read as a bit high on the first listen.
-		static let defaultEnginePitch = 0.8
+		static let defaultEnginePitch = 0.75
 		/// The baked tyre read as tiny on the player's cab. Found by play.
 		static let defaultSteeredWheelScale = 1.8
 	}

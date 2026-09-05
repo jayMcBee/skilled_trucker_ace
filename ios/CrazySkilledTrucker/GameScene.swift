@@ -64,8 +64,9 @@ final class GameScene: SKScene
 	private var worldBasePosition = CGPoint.zero
 	private var activeWheelScale = GameOptions.steeredWheelScale
 	private var lastFrameSeconds = 1.0 / 60.0
-	/// True once the truck has been properly rolling, so the next stop gets its hiss.
-	private var wasRolling = false
+	/// How long the truck has been rolling, so only a real drive ends with a hiss.
+	private var rollingSeconds = 0.0
+	private var secondsSinceHiss = Double.infinity
 
 	/// Below this the rig counts as stopped, for the win check, the shift count and the lamps.
 	private var stoppedThreshold: Double
@@ -127,6 +128,9 @@ final class GameScene: SKScene
 		static let longestTimestep = 1.0 / 30.0
 		/// Faster than this fraction of reverse speed counts as rolling, for the brake hiss.
 		static let rollingFractionForHiss = 0.3
+		/// A stop hisses only after this much rolling, and not within this gap of the last.
+		static let rollingSecondsForHiss = 1.5
+		static let hissGapSeconds = 4.0
 		static let metresPerSecondToKilometresPerHour = 3.6
 
 		static let padInset: CGFloat = 22
@@ -442,7 +446,7 @@ final class GameScene: SKScene
 		isJammed = false
 		directionChanges = 0
 		lastTravelDirection = 0
-		wasRolling = false
+		rollingSeconds = 0
 		throttle = 0
 		steerTarget = 0
 		driveTouch = nil
@@ -1151,7 +1155,7 @@ final class GameScene: SKScene
 		jammedLabel.isHidden = !isJammed
 
 		countDirectionChange()
-		hissOnStop()
+		hissOnStop(after: seconds)
 
 		if jammedNow && world.tuning.jackknifeEndsRun
 		{
@@ -1172,19 +1176,24 @@ final class GameScene: SKScene
 		updateBayReadout()
 	}
 
-	/// Air brakes: a truck that has been rolling lets its air out when it stops. Once per
-	/// stop, and not for a nudge.
-	private func hissOnStop()
+	/// Air brakes: a truck that has been rolling for a while lets its air out when it
+	/// stops. Not for a nudge, and not twice in quick succession.
+	private func hissOnStop(after seconds: Double)
 	{
+		secondsSinceHiss += seconds
 		let rollingSpeed = world.maxReverseSpeed * Constants.rollingFractionForHiss
 		if abs(rig.speed) > rollingSpeed
 		{
-			wasRolling = true
+			rollingSeconds += seconds
 		}
-		else if wasRolling && abs(rig.speed) < stoppedThreshold
+		else if abs(rig.speed) < stoppedThreshold
 		{
-			wasRolling = false
-			sound?.playBrakeHiss()
+			if rollingSeconds >= Constants.rollingSecondsForHiss && secondsSinceHiss >= Constants.hissGapSeconds
+			{
+				secondsSinceHiss = 0
+				sound?.playBrakeHiss()
+			}
+			rollingSeconds = 0
 		}
 	}
 

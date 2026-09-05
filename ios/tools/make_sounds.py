@@ -197,13 +197,15 @@ def jam():
 	return transient + thud + metal
 
 
-def brake_hiss():
-	n = int(0.9 * RATE)
-	noise = bandpass(rng.standard_normal(n), 2600, 0.9) + bandpass(rng.standard_normal(n), 1400, 1.2) * 0.5
-	first = envelope(n, 0.015, 0.22, hold=0.05)
-	second = np.roll(envelope(n, 0.01, 0.35, hold=0.02), int(0.3 * RATE)) * 0.7
-	second[:int(0.3 * RATE)] = 0
-	return noise * (first + second)
+def brake_hiss(seed):
+	"""One puff. Three of these differ in length, colour and level, so a stop never
+	sounds like the last one."""
+	r = np.random.default_rng(seed)
+	decay = 0.16 + 0.12 * r.random()
+	n = int((0.12 + decay * 3) * RATE)
+	noise = (bandpass(r.standard_normal(n), 2200 + 900 * r.random(), 0.9)
+			 + bandpass(r.standard_normal(n), 1200 + 500 * r.random(), 1.2) * 0.5)
+	return noise * envelope(n, 0.012 + 0.01 * r.random(), decay, hold=0.02 + 0.04 * r.random())
 
 
 def beeper_loop():
@@ -293,10 +295,13 @@ if __name__ == '__main__':
 	write('beeper_loop', beeper_loop(), peak=0.6)
 	spectrogram(write('crash', crash()), 'crash')
 	write('jam', jam())
-	spectrogram(write('brake_hiss', brake_hiss(), peak=0.7), 'brake_hiss')
+	for i in range(3):
+		x = write('brake_hiss%d' % (i + 1), brake_hiss(50 + i), peak=0.45 + 0.1 * i)
+		if i == 0:
+			spectrogram(x, 'brake_hiss')
 	horn = horn_recording()
 	write('horn', horn if horn is not None else horn_synth(), peak=0.85)
-	for stale in ('engine_loop.wav',):
+	for stale in ('engine_loop.wav', 'brake_hiss.wav'):
 		path = os.path.join(OUT, stale)
 		if os.path.exists(path):
 			os.remove(path)

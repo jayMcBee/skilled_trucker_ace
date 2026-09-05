@@ -149,7 +149,8 @@ final class SampledSoundEngine: SoundEngine
 		static let beeperLoopFile = "beeper_loop"
 		static let crashFile = "crash"
 		static let jamFile = "jam"
-		static let brakeHissFile = "brake_hiss"
+		static let brakeHissFiles = ["brake_hiss1", "brake_hiss2", "brake_hiss3"]
+		static let brakeHissLevelRange: ClosedRange<Float> = 0.45 ... 0.8
 		static let hornFile = "horn"
 		static let fileExtension = "wav"
 		static let soundsSubdirectory = "Sounds"
@@ -313,9 +314,12 @@ final class SampledSoundEngine: SoundEngine
 		playOneShot(Constants.jamFile)
 	}
 
+	/// A different puff each time, at a different level, so no two stops match.
 	func playBrakeHiss()
 	{
-		playOneShot(Constants.brakeHissFile)
+		guard let name = Constants.brakeHissFiles.randomElement()
+		else { return }
+		playOneShot(name, volume: Float.random(in: Constants.brakeHissLevelRange))
 	}
 
 	func playParked()
@@ -382,7 +386,7 @@ final class SampledSoundEngine: SoundEngine
 			engine.connect(beeperPlayer, to: engine.mainMixerNode, format: loop.format)
 			beeperPlayer.volume = Constants.beeperVolume
 		}
-		for name in [Constants.crashFile, Constants.jamFile, Constants.brakeHissFile, Constants.hornFile]
+		for name in [Constants.crashFile, Constants.jamFile, Constants.hornFile] + Constants.brakeHissFiles
 		{
 			guard let sound = buffer(named: name)
 			else { continue }
@@ -408,11 +412,12 @@ final class SampledSoundEngine: SoundEngine
 		return loop
 	}
 
-	private func playOneShot(_ name: String)
+	private func playOneShot(_ name: String, volume: Float = Constants.oneShotVolume)
 	{
 		guard isRunning,
 			  let sound = oneShots[name]
 		else { return }
+		oneShotPlayer.volume = volume
 		oneShotPlayer.scheduleBuffer(sound, at: nil, options: .interrupts)
 	}
 
@@ -558,6 +563,8 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 	private var jamRingPhases = [Float](repeating: 0, count: 2)
 	private var hissEnvelope: Float = 0
 	private var hissSecondsLeft: Float = 0
+	private var hissDecay: Float = 1
+	private var hissGain: Float = 0
 	private var hissFilter = Biquad()
 	private var hornSecondsLeft: Float = 0
 	private var hornGain: Float = 0
@@ -630,13 +637,14 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 		static let jamRingHz: [Float] = [122, 197]
 		static let jamRingDecaySeconds: Float = 0.14
 		static let jamLevel: Float = 0.7
-		static let hissSeconds: Float = 0.9
+		static let hissSeconds: Float = 0.7
 		static let hissAttackSeconds: Float = 0.015
-		static let hissDecaySeconds: Float = 0.25
-		static let hissSecondBurstAt: Float = 0.6
+		static let hissDecaySeconds: Float = 0.16
+		static let hissDecaySpread: Float = 0.12
 		static let hissHz: Float = 2600
 		static let hissQ: Float = 0.9
-		static let hissLevel: Float = 0.5
+		static let hissLevel: Float = 0.22
+		static let hissLevelSpread: Float = 0.12
 		static let hornSeconds: Float = 1.2
 		static let hornReleaseSeconds: Float = 0.3
 		static let hornHz: [Float] = [233, 311, 349]
@@ -694,7 +702,6 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 		let crashRingDecay = exp(-1 / (Constants.crashRingDecaySeconds * sampleRate))
 		let jamDecay = exp(-1 / (Constants.jamDecaySeconds * sampleRate))
 		let jamRingDecay = exp(-1 / (Constants.jamRingDecaySeconds * sampleRate))
-		let hissDecay = exp(-1 / (Constants.hissDecaySeconds * sampleRate))
 
 		for frame in 0 ..< frameCount
 		{
@@ -751,11 +758,9 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 			{
 				hissSecondsLeft -= secondsPerSample
 				let elapsed = Constants.hissSeconds - hissSecondsLeft
-				let burstStart: Float = elapsed >= Constants.hissSecondBurstAt ? Constants.hissSecondBurstAt : 0
-				let sinceBurst = elapsed - burstStart
-				let attack = min(1, sinceBurst / Constants.hissAttackSeconds)
-				hissEnvelope = sinceBurst < Constants.hissAttackSeconds ? attack : hissEnvelope * hissDecay
-				sample += hissFilter.process(nextNoise()) * hissEnvelope * Constants.hissLevel
+				hissEnvelope = elapsed < Constants.hissAttackSeconds
+					? elapsed / Constants.hissAttackSeconds : hissEnvelope * hissDecay
+				sample += hissFilter.process(nextNoise()) * hissEnvelope * hissGain
 			}
 
 			let hornWanted: Float = hornSecondsLeft > Constants.hornReleaseSeconds ? Constants.hornLevel : 0
@@ -882,6 +887,10 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 			seenHissTrigger = hissCount
 			hissSecondsLeft = Constants.hissSeconds
 			hissEnvelope = 0
+			// A different puff each time: length and level drawn fresh on every stop.
+			let decaySeconds = Constants.hissDecaySeconds + Constants.hissDecaySpread * unitNoise()
+			hissDecay = exp(-1 / (decaySeconds * sampleRate))
+			hissGain = Constants.hissLevel + Constants.hissLevelSpread * unitNoise()
 		}
 		let hornCount = hornTrigger.load(ordering: .relaxed)
 		if hornCount != seenHornTrigger
