@@ -348,7 +348,7 @@ final class GameScene: SKScene
 
 	override init(size: CGSize)
 	{
-		let world = World(preset: Options.preset, tuning: Options.tuning, lotEdge: Options.lotEdge)
+		let world = World(preset: GameOptions.preset, tuning: GameOptions.tuning, lotEdge: GameOptions.lotEdge)
 		self.world = world
 		self.rig = Rig(at: world.level.start, world: world)
 		self.trailerNode = TrailerNode(dimensions: world.dimensions,
@@ -390,7 +390,7 @@ final class GameScene: SKScene
 		refreshSetupLabel()
 		layoutScreen()
 		restart()
-		setSound(Options.soundChoice)
+		setSound(GameOptions.soundChoice)
 
 		NotificationCenter.default.addObserver(self, selector: #selector(applicationBecameActive),
 											   name: UIApplication.didBecomeActiveNotification, object: nil)
@@ -450,9 +450,9 @@ final class GameScene: SKScene
 	/// neither the old run nor a new one.
 	func applyOptions()
 	{
-		let wantedPreset = Options.preset
-		let wantedTuning = Options.tuning
-		let wantedEdge = Options.lotEdge
+		let wantedPreset = GameOptions.preset
+		let wantedTuning = GameOptions.tuning
+		let wantedEdge = GameOptions.lotEdge
 		if wantedPreset != world.preset || wantedTuning != world.tuning || wantedEdge != world.lotEdge
 		{
 			world = World(preset: wantedPreset, tuning: wantedTuning, lotEdge: wantedEdge)
@@ -462,9 +462,9 @@ final class GameScene: SKScene
 			restart()
 		}
 		layoutScreen()
-		if Options.soundChoice != activeSoundChoice
+		if GameOptions.soundChoice != activeSoundChoice
 		{
-			setSound(Options.soundChoice)
+			setSound(GameOptions.soundChoice)
 		}
 	}
 
@@ -1034,7 +1034,7 @@ final class GameScene: SKScene
 		worldLayer.position = worldBasePosition
 
 		let inset = Constants.padInset
-		let driveOnLeft = !Options.swapPads
+		let driveOnLeft = !GameOptions.swapPads
 		let driveX = driveOnLeft ? inset + Constants.padThickness / 2 : size.width - inset - Constants.padThickness / 2
 		let steerX = driveOnLeft ? size.width - inset - Constants.steerPadLength / 2 : inset + Constants.steerPadLength / 2
 		drivePad.position = CGPoint(x: driveX, y: inset + Constants.drivePadLength / 2)
@@ -1078,7 +1078,7 @@ final class GameScene: SKScene
 		if jammedNow && !isJammed
 		{
 			sound?.playJam()
-			if Options.particlesEnabled
+			if GameOptions.particlesEnabled
 			{
 				effectsLayer.addChild(burst(Constants.dust, count: Constants.jamDustCount, at: scenePosition(rig.position)))
 			}
@@ -1148,7 +1148,7 @@ final class GameScene: SKScene
 		endRun(title: "PARKED", subtitle: "Fitted the rig in with \(directionChanges) direction shifts.",
 			   colour: Constants.goodColour)
 		sound?.playParked()
-		guard Options.particlesEnabled
+		guard GameOptions.particlesEnabled
 		else { return }
 		let origin = scenePosition(world.lot.bayCentre)
 		effectsLayer.addChild(burst(Constants.goldConfetti, at: origin))
@@ -1163,7 +1163,7 @@ final class GameScene: SKScene
 		flash.run(.sequence([.fadeAlpha(to: Constants.flashPeakAlpha, duration: Constants.flashAttack),
 							 .fadeAlpha(to: 0, duration: Constants.flashRelease)]))
 
-		guard Options.particlesEnabled
+		guard GameOptions.particlesEnabled
 		else { return }
 		let origin = scenePosition(point)
 		effectsLayer.addChild(burst(Constants.sparks, at: origin))
@@ -1268,7 +1268,7 @@ final class GameScene: SKScene
 		let kilometresPerHour = abs(rig.speed) / world.scale * Constants.metresPerSecondToKilometresPerHour
 		speedLabel.text = String(format: "%.0f km/h", kilometresPerHour)
 
-		let wantsSmoke = Options.particlesEnabled && !isRunOver
+		let wantsSmoke = GameOptions.particlesEnabled && !isRunOver
 		exhaust.particleBirthRate = wantsSmoke
 			? Constants.exhaustIdleBirthRate + Constants.exhaustBirthRateWithThrottle * CGFloat(abs(throttle)) : 0
 	}

@@ -1,5 +1,5 @@
 //	==================================================
-//	'Options.swift'
+//	'GameOptions.swift'
 //	--------------------------------------------------
 //	Everything the options sheet can change, stored in UserDefaults so it survives a
 //	relaunch. Every default matches the web build.
@@ -17,7 +17,7 @@ enum SoundChoice: Int
 	case sampled = 2
 }
 
-struct Options
+struct GameOptions
 {
 	// MARK: - Public Properties
 

@@ -17,9 +17,10 @@ fix.
 | `CrazySkilledTrucker/GameScene.swift` | The scene: draws the lot, steps the rig, runs the effects, reads the two pads. |
 | `CrazySkilledTrucker/TruckArt.swift` | Trailer and cab node trees, built from the same dimensions the collision uses. |
 | `CrazySkilledTrucker/ThumbPad.swift` | One on-screen slider: drive (vertical) or steer (horizontal). |
-| `CrazySkilledTrucker/Procedural.swift` | Textures drawn at launch, and a seeded random source. No image assets. |
+| `CrazySkilledTrucker/ProceduralTexture.swift` | Textures drawn at launch, and textures loaded from the bundle. |
+| `CrazySkilledTrucker/SeededRandom.swift` | A seeded random source, so the lot is the same on every launch. |
 | `CrazySkilledTrucker/SoundEngine.swift` | Two sound layers behind one protocol: synthesised, and sampled. |
-| `CrazySkilledTrucker/Options.swift` | Every option, in UserDefaults. |
+| `CrazySkilledTrucker/GameOptions.swift` | Every option, in UserDefaults. |
 | `CrazySkilledTrucker/OptionsViewController.swift` | The options sheet (UIKit). |
 | `CrazySkilledTrucker/GameViewController.swift` | Hosts the SKView, locks landscape, presents the sheet. |
 | `CrazySkilledTrucker/AppDelegate.swift`, `SceneDelegate.swift` | One scene, one window. No main storyboard. |

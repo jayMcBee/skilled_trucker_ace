@@ -53,18 +53,18 @@ final class OptionsViewController: UIViewController
 		navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self,
 															action: #selector(finish))
 
-		presetControl.selectedSegmentIndex = Options.presetIndex
+		presetControl.selectedSegmentIndex = GameOptions.presetIndex
 		forwardSlider.minimumValue = Float(Tuning.lowestFactor)
 		forwardSlider.maximumValue = Float(Tuning.highestForwardFactor)
-		forwardSlider.value = Float(Options.forwardFactor)
+		forwardSlider.value = Float(GameOptions.forwardFactor)
 		reverseSlider.minimumValue = Float(Tuning.lowestFactor)
 		reverseSlider.maximumValue = Float(Tuning.highestReverseFactor)
-		reverseSlider.value = Float(Options.reverseFactor)
-		jackknifeSwitch.isOn = Options.jackknifeEndsRun
-		swapSwitch.isOn = Options.swapPads
-		particlesSwitch.isOn = Options.particlesEnabled
-		soundControl.selectedSegmentIndex = Options.soundChoice.rawValue
-		lotEdgeControl.selectedSegmentIndex = Options.lotEdge.rawValue
+		reverseSlider.value = Float(GameOptions.reverseFactor)
+		jackknifeSwitch.isOn = GameOptions.jackknifeEndsRun
+		swapSwitch.isOn = GameOptions.swapPads
+		particlesSwitch.isOn = GameOptions.particlesEnabled
+		soundControl.selectedSegmentIndex = GameOptions.soundChoice.rawValue
+		lotEdgeControl.selectedSegmentIndex = GameOptions.lotEdge.rawValue
 
 		for caption in [forwardCaption, reverseCaption]
 		{
@@ -134,14 +134,14 @@ final class OptionsViewController: UIViewController
 	{
 		forwardSlider.value = (forwardSlider.value / Constants.sliderStep).rounded() * Constants.sliderStep
 		reverseSlider.value = (reverseSlider.value / Constants.sliderStep).rounded() * Constants.sliderStep
-		Options.presetIndex = presetControl.selectedSegmentIndex
-		Options.forwardFactor = Double(forwardSlider.value)
-		Options.reverseFactor = Double(reverseSlider.value)
-		Options.jackknifeEndsRun = jackknifeSwitch.isOn
-		Options.swapPads = swapSwitch.isOn
-		Options.particlesEnabled = particlesSwitch.isOn
-		Options.soundChoice = SoundChoice(rawValue: soundControl.selectedSegmentIndex) ?? .off
-		Options.lotEdge = LotEdge(rawValue: lotEdgeControl.selectedSegmentIndex) ?? .open
+		GameOptions.presetIndex = presetControl.selectedSegmentIndex
+		GameOptions.forwardFactor = Double(forwardSlider.value)
+		GameOptions.reverseFactor = Double(reverseSlider.value)
+		GameOptions.jackknifeEndsRun = jackknifeSwitch.isOn
+		GameOptions.swapPads = swapSwitch.isOn
+		GameOptions.particlesEnabled = particlesSwitch.isOn
+		GameOptions.soundChoice = SoundChoice(rawValue: soundControl.selectedSegmentIndex) ?? .off
+		GameOptions.lotEdge = LotEdge(rawValue: lotEdgeControl.selectedSegmentIndex) ?? .open
 		refreshCaptions()
 	}
 
@@ -149,7 +149,7 @@ final class OptionsViewController: UIViewController
 	/// next to the dial that spends it.
 	private func refreshCaptions()
 	{
-		let world = World(preset: Options.preset, tuning: Options.tuning)
+		let world = World(preset: GameOptions.preset, tuning: GameOptions.tuning)
 		forwardCaption.text = String(format: "%.0f km/h  (%.1f×). Forward costs nothing: the fold converges going forward.",
 									 world.forwardKilometresPerHour, world.tuning.forwardFactor)
 		let foldClock = world.secondsOfFullLockReverseBeforeJam()
