@@ -3,10 +3,9 @@
 Swift port of the web game, with the graphics, effects, sound and touch controls the web
 build does not have. The web build in the repo root stays the physics reference.
 
-**None of this Swift has been compiled.** It was written on Linux, where there is no Swift
-toolchain and no SpriteKit. Expect to fix build errors on the first run. The physics file and
-its tests are the part most likely to be right; the scene is the part most likely to need a
-fix.
+The Swift is written on Linux, where there is no SpriteKit. The physics, the options and the
+tests compile and pass under Swift 5.10 in a container here; the app builds and runs on the
+Mac. A change to the SpriteKit or AVFoundation files is unverified until it has been built there.
 
 ## Files
 
@@ -120,8 +119,8 @@ not the mapping.
 
 **Samples**: `tools/make_sounds.py` renders that model into three loops at three loads, idle,
 low and high, plus a coast loop of road and wind. Each loop has its own gain mixer and
-`AVAudioUnitVarispeed`; the game crossfades them by load with equal power and bends each at
-most 20% from its own pitch, then an `AVAudioUnitEQ` low-pass opens with the throttle and a
+`AVAudioUnitVarispeed`; the game crossfades them by load with equal power and bends each
+between -20% and +25% of its own pitch, then an `AVAudioUnitEQ` low-pass opens with the throttle and a
 little `AVAudioUnitReverb` puts it in the lot. Every gain is approached over 80 ms, never
 stepped. One-shots: a crash in layers (transient, body, four ringing partials, a rising
 scrape, debris ticks), a jam clunk, an air-brake hiss on every stop after rolling, and the

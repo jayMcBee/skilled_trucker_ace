@@ -168,7 +168,8 @@ def ring(n, partials, decay, level):
 	return out
 
 
-def crash():
+def crash(seed=61):
+	rng = np.random.default_rng(seed)
 	n = int(1.3 * RATE)
 	transient = rng.standard_normal(n) * envelope(n, 0.001, 0.012) * 1.6
 	body = lowpass(rng.standard_normal(n), 300) * envelope(n, 0.002, 0.09) * 2.5
@@ -189,7 +190,8 @@ def crash():
 	return transient + body + metal + scrape + debris
 
 
-def jam():
+def jam(seed=62):
+	rng = np.random.default_rng(seed)
 	n = int(0.35 * RATE)
 	transient = rng.standard_normal(n) * envelope(n, 0.001, 0.008) * 1.2
 	thud = lowpass(rng.standard_normal(n), 200) * envelope(n, 0.002, 0.05) * 2.0

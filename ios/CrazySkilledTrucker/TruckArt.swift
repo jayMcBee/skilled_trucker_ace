@@ -211,12 +211,13 @@ final class CabNode: SKNode
 		{
 			let wheelLength = length * Constants.wheelLengthFraction * wheelScale
 			let wheelWidth = width * Constants.wheelWidthFraction * wheelScale
-			// A bigger tyre moves inward rather than past the box edge.
+			// A bigger tyre moves inward rather than past the box edge, on both axes.
 			let track = min(width * Constants.wheelTrackFraction, width / 2 - wheelWidth / 2)
+			let axle = min(length * Constants.frontAxleFraction, length / 2 - wheelLength / 2)
 			for side in TruckPalette.sides
 			{
 				let wheel = SKNode()
-				wheel.position = CGPoint(x: length * Constants.frontAxleFraction, y: side * track)
+				wheel.position = CGPoint(x: axle, y: side * track)
 				let tyre = TruckPaint.rectangle(centre: .zero, size: CGSize(width: wheelLength, height: wheelWidth),
 												fill: TruckPalette.tyreColour, corner: TruckPalette.tyreCornerRadius)
 				let tread = TruckPaint.rectangle(

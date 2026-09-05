@@ -447,6 +447,7 @@ final class GameScene: SKScene
 		directionChanges = 0
 		lastTravelDirection = 0
 		rollingSeconds = 0
+		secondsSinceHiss = Double.infinity
 		throttle = 0
 		steerTarget = 0
 		driveTouch = nil
@@ -1155,7 +1156,11 @@ final class GameScene: SKScene
 		jammedLabel.isHidden = !isJammed
 
 		countDirectionChange()
-		hissOnStop(after: seconds)
+		// A jam stops the rig by refusing the step, not by braking: no air comes out.
+		if !jammedNow
+		{
+			hissOnStop(after: seconds)
+		}
 
 		if jammedNow && world.tuning.jackknifeEndsRun
 		{

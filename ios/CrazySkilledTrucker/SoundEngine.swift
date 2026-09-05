@@ -130,10 +130,15 @@ final class SampledSoundEngine: SoundEngine
 	private let room = AVAudioUnitReverb()
 	private let ambientPlayer = AVAudioPlayerNode()
 	private let beeperPlayer = AVAudioPlayerNode()
-	private let oneShotPlayer = AVAudioPlayerNode()
+	/// One player per kind of one-shot, so a clunk and a hiss on the same frame both sound.
+	private let crashPlayer = AVAudioPlayerNode()
+	private let clunkPlayer = AVAudioPlayerNode()
+	private let hissPlayer = AVAudioPlayerNode()
+	private let hornPlayer = AVAudioPlayerNode()
 	private var ambientLoop: AVAudioPCMBuffer?
 	private var beeperLoop: AVAudioPCMBuffer?
 	private var oneShots: [String: AVAudioPCMBuffer] = [:]
+	private var oneShotPlayers: [String: AVAudioPlayerNode] = [:]
 	private var isGraphBuilt = false
 	private var isRunning = false
 	private var isBeeping = false
@@ -222,9 +227,9 @@ final class SampledSoundEngine: SoundEngine
 		{
 			ambientPlayer.play()
 		}
-		if !oneShots.isEmpty
+		for player in Set(oneShotPlayers.values)
 		{
-			oneShotPlayer.play()
+			player.play()
 		}
 	}
 
@@ -236,7 +241,7 @@ final class SampledSoundEngine: SoundEngine
 		{
 			loop.player.stop()
 		}
-		for player in [ambientPlayer, beeperPlayer, oneShotPlayer]
+		for player in [ambientPlayer, beeperPlayer, crashPlayer, clunkPlayer, hissPlayer, hornPlayer]
 		{
 			player.stop()
 		}
@@ -334,7 +339,7 @@ final class SampledSoundEngine: SoundEngine
 	///
 	///     loop player -> gain -> varispeed -\\
 	///     loop player -> gain -> varispeed --> engine mixer -> exhaust low-pass -> room mixer -> reverb -> main
-	///     one-shots ------------------------------------------------------------^
+	///     crash, clunk, hiss, horn players ---------------------------------------^
 	///     ambient, beeper -> main
 	private func buildGraph()
 	{
@@ -370,7 +375,7 @@ final class SampledSoundEngine: SoundEngine
 		engine.connect(roomMixer, to: room, format: format)
 		engine.connect(room, to: engine.mainMixerNode, format: format)
 
-		for player in [ambientPlayer, beeperPlayer, oneShotPlayer]
+		for player in [ambientPlayer, beeperPlayer, crashPlayer, clunkPlayer, hissPlayer, hornPlayer]
 		{
 			engine.attach(player)
 		}
@@ -386,17 +391,22 @@ final class SampledSoundEngine: SoundEngine
 			engine.connect(beeperPlayer, to: engine.mainMixerNode, format: loop.format)
 			beeperPlayer.volume = Constants.beeperVolume
 		}
-		for name in [Constants.crashFile, Constants.jamFile, Constants.hornFile] + Constants.brakeHissFiles
+		let kinds: [(name: String, player: AVAudioPlayerNode)] = [(Constants.crashFile, crashPlayer),
+																   (Constants.jamFile, clunkPlayer),
+																   (Constants.hornFile, hornPlayer)]
+			+ Constants.brakeHissFiles.map { (name: $0, player: hissPlayer) }
+		for kind in kinds
 		{
-			guard let sound = buffer(named: name)
+			guard let sound = buffer(named: kind.name)
 			else { continue }
-			if oneShots.isEmpty
+			if !oneShotPlayers.values.contains(kind.player)
 			{
-				engine.connect(oneShotPlayer, to: roomMixer, format: sound.format)
+				engine.connect(kind.player, to: roomMixer, format: sound.format)
+				kind.player.volume = Constants.oneShotVolume
 			}
-			oneShots[name] = sound
+			oneShots[kind.name] = sound
+			oneShotPlayers[kind.name] = kind.player
 		}
-		oneShotPlayer.volume = Constants.oneShotVolume
 	}
 
 	private func attachLoop(buffer: AVAudioPCMBuffer, load: Float, rpm: Float) -> EngineLoop
@@ -415,10 +425,11 @@ final class SampledSoundEngine: SoundEngine
 	private func playOneShot(_ name: String, volume: Float = Constants.oneShotVolume)
 	{
 		guard isRunning,
-			  let sound = oneShots[name]
+			  let sound = oneShots[name],
+			  let player = oneShotPlayers[name]
 		else { return }
-		oneShotPlayer.volume = volume
-		oneShotPlayer.scheduleBuffer(sound, at: nil, options: .interrupts)
+		player.volume = volume
+		player.scheduleBuffer(sound, at: nil, options: .interrupts)
 	}
 
 	/// Looks at the bundle root first, then in a `Sounds` folder, so both ways of adding
@@ -528,6 +539,10 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 	// MARK: - Render state, owned by the audio thread
 
 	private let sampleRate: Float
+	private let crashDecay: Float
+	private let crashRingDecay: Float
+	private let jamDecay: Float
+	private let jamRingDecay: Float
 	private var noiseState: UInt32 = 0x1234_5678
 	private var cylinderGains: [Float] = []
 	private var cylinderLags: [Float] = []
@@ -661,6 +676,10 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 	init(sampleRate: Float)
 	{
 		self.sampleRate = sampleRate
+		crashDecay = exp(-1 / (Constants.crashDecaySeconds * sampleRate))
+		crashRingDecay = exp(-1 / (Constants.crashRingDecaySeconds * sampleRate))
+		jamDecay = exp(-1 / (Constants.jamDecaySeconds * sampleRate))
+		jamRingDecay = exp(-1 / (Constants.jamRingDecaySeconds * sampleRate))
 		for _ in 0 ..< Constants.cylinderCount
 		{
 			cylinderGains.append(1 + Constants.cylinderGainSpread * nextNoise())
@@ -698,15 +717,19 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 		exhaust.setLowPass(frequency: smoothedExhaust, q: Constants.exhaustQ, sampleRate: sampleRate)
 
 		let secondsPerSample = 1 / sampleRate
-		let crashDecay = exp(-1 / (Constants.crashDecaySeconds * sampleRate))
-		let crashRingDecay = exp(-1 / (Constants.crashRingDecaySeconds * sampleRate))
-		let jamDecay = exp(-1 / (Constants.jamDecaySeconds * sampleRate))
-		let jamRingDecay = exp(-1 / (Constants.jamRingDecaySeconds * sampleRate))
 
 		for frame in 0 ..< frameCount
 		{
 			smoothedLoad += (targetLoad - smoothedLoad) * Constants.loadSmoothing
 			smoothedCoast += (targetCoast - smoothedCoast) * Constants.loadSmoothing
+			if targetLoad == 0 && smoothedLoad < Constants.gainFloor
+			{
+				smoothedLoad = 0
+			}
+			if targetCoast == 0 && smoothedCoast < Constants.gainFloor
+			{
+				smoothedCoast = 0
+			}
 			var sample = engineSample(load: smoothedLoad, pitch: smoothedPitch, secondsPerSample: secondsPerSample)
 			sample += coastFilter.process(nextNoise()) * smoothedCoast * Constants.coastLevel
 
@@ -782,14 +805,6 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 			}
 
 			output[frame] = tanh(sample * Constants.outputDrive)
-		}
-
-		for extra in buffers.dropFirst()
-		{
-			if let channel = extra.mData?.assumingMemoryBound(to: Float.self)
-			{
-				channel.update(from: output, count: frameCount)
-			}
 		}
 	}
 
