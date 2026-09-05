@@ -1,11 +1,12 @@
 //	==================================================
 //	'TruckArt.swift'
 //	--------------------------------------------------
-//	The trailer and the cab as node trees, drawn in local units where +x is forward.
-//	Both are built from the same TruckDimensions the collision boxes use, so the
-//	picture and the shape it collides as cannot drift apart. Nothing here is drawn
-//	outside the collision box: an obstacle wider than its own picture is invisible
-//	by construction, and one narrower than it feels cheated.
+//	The trailer and the cab as nodes: one baked sprite each, from 'tools/make_trucks.py',
+//	drawn in local units where +x is forward. The sprite is exactly the collision box,
+//	so the picture and the shape it collides as cannot drift apart: an obstacle wider
+//	than its picture is invisible by construction, and one narrower than it feels
+//	cheated. The player's steered wheels are the one deliberate exception, drawn 2px
+//	proud of the cab as the steering readout, which is forgiving rather than punishing.
 //
 //	--------------------------------------------------
 //							 Copyright (c) 2026 Jan Barnholt
@@ -17,8 +18,6 @@ import SpriteKit
 private enum TruckPalette
 {
 	static let shadowColour = SKColor(white: 0, alpha: 0.55)
-	static let outlineColour = SKColor(white: 0, alpha: 0.35)
-	static let outlineWidth: CGFloat = 0.8
 	static let tyreColour = SKColor(red: 0.01, green: 0.02, blue: 0.09, alpha: 1)
 	static let tyreCoreColour = SKColor(red: 0.89, green: 0.91, blue: 0.94, alpha: 1)
 	static let tyreCornerRadius: CGFloat = 1
@@ -50,6 +49,17 @@ private struct TruckPaint
 		let node = rectangle(centre: .zero, size: size, fill: TruckPalette.shadowColour)
 		node.zPosition = TruckPalette.shadowZ
 		return node
+	}
+
+	/// The baked sprite, or a flat block of `fallback` when the PNG is not in the bundle,
+	/// so the game still plays without its art.
+	static func body(texture: SKTexture?, size: CGSize, fallback: SKColor) -> SKSpriteNode
+	{
+		if let texture = texture
+		{
+			return SKSpriteNode(texture: texture, size: size)
+		}
+		return SKSpriteNode(color: fallback, size: size)
 	}
 
 	static func glow(colour: SKColor, diameter: CGFloat) -> SKSpriteNode
@@ -85,30 +95,18 @@ final class TrailerNode: SKNode
 
 	private enum Constants
 	{
-		static let ribSpacingFraction = 0.077
-		static let ribInsetFraction = 0.06
-		static let ribWidthFraction = 0.04
-		static let ribHeightFraction = 0.86
-		static let ribColour = SKColor(white: 0, alpha: 0.10)
-		static let roofEdgeFraction = 0.07
-		static let roofEdgeColour = SKColor(white: 1, alpha: 0.35)
-		static let lampWidthFraction = 0.05
-		static let lampHeightFraction = 0.19
-		static let lampInsetFraction = 0.05
-		static let lampGlowDiameterFraction = 0.55
+		/// Where the baked tail lamps sit: at the rear edge, this far in from each side.
+		static let lampInsetFraction = 0.13
+		static let lampGlowDiameterFraction = 0.45
 		static let playerLampGlowDiameterFraction = 0.9
-		static let lampIdleAlpha: CGFloat = 0.35
+		static let lampIdleAlpha: CGFloat = 0.3
 		static let lampBrakeAlpha: CGFloat = 0.9
 		static let lampReverseAlpha: CGFloat = 0.7
-		static let axleFractions = [0.10, 0.19]
-		static let tyreLengthFraction = 0.06
-		static let tyreWidthFraction = 0.14
-		static let tyreInsetFraction = 0.08
 	}
 
 	// MARK: - Init
 
-	init(dimensions: TruckDimensions, bodyColour: SKColor, isPlayer: Bool)
+	init(dimensions: TruckDimensions, texture: SKTexture?, fallbackColour: SKColor, isPlayer: Bool)
 	{
 		let length = CGFloat(dimensions.trailerLength)
 		let width = CGFloat(dimensions.trailerWidth)
@@ -121,54 +119,12 @@ final class TrailerNode: SKNode
 		super.init()
 
 		addChild(shadow)
+		addChild(TruckPaint.body(texture: texture, size: size, fallback: fallbackColour))
 
-		let body = TruckPaint.rectangle(centre: .zero, size: size, fill: bodyColour)
-		body.strokeColor = TruckPalette.outlineColour
-		body.lineWidth = TruckPalette.outlineWidth
-		addChild(body)
-
-		let ribWidth = max(1, width * Constants.ribWidthFraction)
-		var ribX = -length / 2 + length * Constants.ribInsetFraction
-		while ribX < length / 2 - length * Constants.ribInsetFraction
-		{
-			let rib = TruckPaint.rectangle(centre: CGPoint(x: ribX, y: 0),
-										   size: CGSize(width: ribWidth, height: width * Constants.ribHeightFraction),
-										   fill: Constants.ribColour)
-			addChild(rib)
-			ribX += length * Constants.ribSpacingFraction
-		}
-
-		let edgeHeight = width * Constants.roofEdgeFraction
-		for side in TruckPalette.sides
-		{
-			let edge = TruckPaint.rectangle(centre: CGPoint(x: 0, y: side * (width / 2 - edgeHeight / 2)),
-											size: CGSize(width: length, height: edgeHeight),
-											fill: Constants.roofEdgeColour)
-			addChild(edge)
-		}
-
-		for axle in Constants.axleFractions
-		{
-			for side in TruckPalette.sides
-			{
-				let tyre = TruckPaint.rectangle(
-					centre: CGPoint(x: -length / 2 + length * axle,
-									y: side * (width / 2 - width * Constants.tyreInsetFraction)),
-					size: CGSize(width: length * Constants.tyreLengthFraction,
-								 height: width * Constants.tyreWidthFraction),
-					fill: TruckPalette.tyreColour, corner: TruckPalette.tyreCornerRadius)
-				addChild(tyre)
-			}
-		}
-
-		let lampSize = CGSize(width: max(1, width * Constants.lampWidthFraction),
-							  height: width * Constants.lampHeightFraction)
-		let lampY = width / 2 - width * Constants.lampInsetFraction - lampSize.height / 2
+		let lampY = width / 2 - width * Constants.lampInsetFraction
 		for (side, glow) in zip(TruckPalette.sides, [leftLamp, rightLamp])
 		{
-			let lampCentre = CGPoint(x: -length / 2 + lampSize.width / 2, y: side * lampY)
-			addChild(TruckPaint.rectangle(centre: lampCentre, size: lampSize, fill: TruckPalette.lampRedColour))
-			glow.position = lampCentre
+			glow.position = CGPoint(x: -length / 2, y: side * lampY)
 			glow.alpha = Constants.lampIdleAlpha
 			addChild(glow)
 		}
@@ -206,7 +162,7 @@ final class CabNode: SKNode
 {
 	// MARK: - Public Properties
 
-	/// Where the exhaust stack is, in local units, for the smoke emitter.
+	/// Where the exhaust stack is baked, in local units, for the smoke emitter.
 	let exhaustAnchor: CGPoint
 
 	// MARK: - Private Properties
@@ -216,32 +172,18 @@ final class CabNode: SKNode
 
 	private enum Constants
 	{
-		static let windscreenColour = SKColor(red: 0.01, green: 0.02, blue: 0.09, alpha: 1)
-		static let windscreenStartFraction = 0.18
-		static let windscreenLengthFraction = 0.18
-		static let windscreenWidthFraction = 0.84
-		static let bonnetHighlightColour = SKColor(white: 1, alpha: 0.16)
-		static let roofShadeColour = SKColor(white: 0, alpha: 0.10)
-		static let mirrorColour = SKColor(white: 0.85, alpha: 1)
-		static let mirrorLengthFraction = 0.08
-		static let mirrorWidthFraction = 0.06
 		static let wheelLengthFraction = 0.40
 		static let wheelWidthFraction = 0.17
 		static let wheelMinimumLength: CGFloat = 6
 		static let wheelMinimumWidth: CGFloat = 2.5
-		static let rearAxleFraction = -0.34
 		static let frontAxleFraction = 0.34
 		static let wheelTrackFraction = 0.40
-		static let rearWheelLengthFraction = 0.7
 		static let casingPadding: CGFloat = 1
-		static let exhaustXFraction = -0.30
-		static let exhaustYFraction = -0.44
-		static let roofCentreFraction = -0.2
-		/// Above every body detail, so the readout is never covered.
+		/// The stack in the baked cab: rear left of the roof.
+		static let exhaustXFraction = -0.36
+		static let exhaustYFraction = 0.35
+		/// Above the body, so the readout is never covered.
 		static let steeredWheelZ: CGFloat = 2
-		static let roofLengthFraction = 0.5
-		static let bodyDetailWidthFraction = 0.9
-		static let bodyCornerRadius: CGFloat = 1.5
 		/// Full lock is only 24 degrees, which on a 13px wheel moves the tip under 3px.
 		/// Drawn 1.6x, it reads. The player needs direction and size, not a protractor.
 		static let steerExaggeration: CGFloat = 1.6
@@ -249,11 +191,9 @@ final class CabNode: SKNode
 
 	// MARK: - Init
 
-	/// The player's steered wheels are the steering readout, so they are drawn oversized
-	/// and proud of the body, 2px past the collision box: a picture bigger than its box
-	/// is forgiving. A parked cab gets fixed wheels inside its box instead, because a
-	/// parked picture bigger than its box is a lie the player pays for.
-	init(dimensions: TruckDimensions, bodyColour: SKColor, isPlayer: Bool)
+	/// The player's cab is baked without front wheels and gets the steered pair here,
+	/// oversized and proud of the body. A parked cab has its wheels baked inside the box.
+	init(dimensions: TruckDimensions, texture: SKTexture?, fallbackColour: SKColor, isPlayer: Bool)
 	{
 		let length = CGFloat(dimensions.cabLength)
 		let width = CGFloat(dimensions.cabWidth)
@@ -261,11 +201,11 @@ final class CabNode: SKNode
 		shadow = TruckPaint.shadow(size: size)
 		exhaustAnchor = CGPoint(x: length * Constants.exhaustXFraction, y: width * Constants.exhaustYFraction)
 
-		let wheelLength = max(Constants.wheelMinimumLength, length * Constants.wheelLengthFraction)
-		let wheelWidth = max(Constants.wheelMinimumWidth, width * Constants.wheelWidthFraction)
 		var wheels: [SKNode] = []
 		if isPlayer
 		{
+			let wheelLength = max(Constants.wheelMinimumLength, length * Constants.wheelLengthFraction)
+			let wheelWidth = max(Constants.wheelMinimumWidth, width * Constants.wheelWidthFraction)
 			for side in TruckPalette.sides
 			{
 				let wheel = SKNode()
@@ -287,50 +227,7 @@ final class CabNode: SKNode
 		super.init()
 
 		addChild(shadow)
-
-		let body = TruckPaint.rectangle(centre: .zero, size: size, fill: bodyColour, corner: Constants.bodyCornerRadius)
-		body.strokeColor = TruckPalette.outlineColour
-		body.lineWidth = TruckPalette.outlineWidth
-		addChild(body)
-
-		let detailWidth = width * Constants.bodyDetailWidthFraction
-		let roof = TruckPaint.rectangle(centre: CGPoint(x: length * Constants.roofCentreFraction, y: 0),
-										size: CGSize(width: length * Constants.roofLengthFraction, height: detailWidth),
-										fill: Constants.roofShadeColour)
-		addChild(roof)
-
-		let bonnetLength = length / 2 - length * (Constants.windscreenStartFraction + Constants.windscreenLengthFraction)
-		let bonnet = TruckPaint.rectangle(centre: CGPoint(x: length / 2 - bonnetLength / 2, y: 0),
-										  size: CGSize(width: bonnetLength, height: detailWidth),
-										  fill: Constants.bonnetHighlightColour)
-		addChild(bonnet)
-
-		let windscreenX = length * (Constants.windscreenStartFraction + Constants.windscreenLengthFraction / 2)
-		let windscreen = TruckPaint.rectangle(centre: CGPoint(x: windscreenX, y: 0),
-											  size: CGSize(width: length * Constants.windscreenLengthFraction,
-														   height: width * Constants.windscreenWidthFraction),
-											  fill: Constants.windscreenColour)
-		addChild(windscreen)
-
-		for side in TruckPalette.sides
-		{
-			let mirror = TruckPaint.rectangle(
-				centre: CGPoint(x: windscreenX, y: side * (width / 2 - width * Constants.mirrorWidthFraction / 2)),
-				size: CGSize(width: length * Constants.mirrorLengthFraction, height: width * Constants.mirrorWidthFraction),
-				fill: Constants.mirrorColour)
-			addChild(mirror)
-
-			let fixedAxles = isPlayer ? [Constants.rearAxleFraction] : [Constants.rearAxleFraction, Constants.frontAxleFraction]
-			for axle in fixedAxles
-			{
-				let wheel = TruckPaint.rectangle(
-					centre: CGPoint(x: length * axle, y: side * width * Constants.wheelTrackFraction),
-					size: CGSize(width: wheelLength * Constants.rearWheelLengthFraction, height: wheelWidth),
-					fill: TruckPalette.tyreColour, corner: TruckPalette.tyreCornerRadius)
-				addChild(wheel)
-			}
-		}
-
+		addChild(TruckPaint.body(texture: texture, size: size, fallback: fallbackColour))
 		for wheel in steeredWheels
 		{
 			wheel.zPosition = Constants.steeredWheelZ

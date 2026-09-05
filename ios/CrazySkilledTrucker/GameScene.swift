@@ -326,18 +326,18 @@ final class GameScene: SKScene
 		static let smokeColour = SKColor(white: 0.55, alpha: 1)
 		static let confettiGold = SKColor(red: 1, green: 0.85, blue: 0.30, alpha: 1)
 
-		static let parkedTrailerColours: [SKColor] = [
-			SKColor(white: 0.97, alpha: 1), SKColor(white: 0.89, alpha: 1),
-			SKColor(white: 0.80, alpha: 1), SKColor(white: 0.94, alpha: 1)
-		]
-		static let parkedCabColours: [SKColor] = [
-			SKColor(red: 0.86, green: 0.15, blue: 0.15, alpha: 1),
-			SKColor(red: 0.23, green: 0.51, blue: 0.96, alpha: 1),
-			SKColor(red: 0.96, green: 0.62, blue: 0.04, alpha: 1),
-			SKColor(red: 0.06, green: 0.73, blue: 0.51, alpha: 1),
-			SKColor(red: 0.39, green: 0.40, blue: 0.95, alpha: 1),
-			SKColor(white: 0.89, alpha: 1)
-		]
+		/// Baked by tools/make_trucks.py: this many liveries, two trailers each, one cab each.
+		static let liveryCount = 8
+		static let trailersPerLivery = 2
+		static let parkedTrailerFile = "trailer_L%d_%d"
+		static let parkedCabFile = "cab_L%d"
+		static let playerTrailerFile = "trailer_player"
+		static let playerCabFile = "cab_player"
+		static let fleetSeed: UInt64 = 7
+		/// Real depots have fleets: a haulier's trucks park together.
+		static let fleetSizeRange = 1 ... 3
+		static let parkedFallbackTrailerColour = SKColor(white: 0.9, alpha: 1)
+		static let parkedFallbackCabColour = SKColor(red: 0.23, green: 0.51, blue: 0.96, alpha: 1)
 		/// Sodium lamps, in canvas units, where the web build painted its glows.
 		static let lampGlows: [(x: Double, y: Double, radius: Double)] = [
 			(150, 100, 180), (650, 100, 180), (400, 550, 220)
@@ -351,9 +351,8 @@ final class GameScene: SKScene
 		let world = World(preset: GameOptions.preset, tuning: GameOptions.tuning, lotEdge: GameOptions.lotEdge)
 		self.world = world
 		self.rig = Rig(at: world.level.start, world: world)
-		self.trailerNode = TrailerNode(dimensions: world.dimensions,
-									   bodyColour: Constants.playerTrailerColour, isPlayer: true)
-		self.cabNode = CabNode(dimensions: world.dimensions, bodyColour: Constants.playerCabColour, isPlayer: true)
+		self.trailerNode = GameScene.playerTrailerNode(dimensions: world.dimensions)
+		self.cabNode = GameScene.playerCabNode(dimensions: world.dimensions)
 		super.init(size: size)
 		scaleMode = .resizeFill
 		backgroundColor = Constants.voidColour
@@ -807,24 +806,39 @@ final class GameScene: SKScene
 	}
 
 	/// Placed from the same boxes they collide as: the centre of each box is the
-	/// centre of its picture.
+	/// centre of its picture. Liveries come in fleets of neighbours, the way a
+	/// haulier's trucks park together, and the slots are walked in order so they do.
 	private func addParkedRigs()
 	{
-		for (index, placement) in world.lot.parked.enumerated()
+		var random = SeededRandom(seed: Constants.fleetSeed)
+		var livery = 0
+		var leftInFleet = 0
+		for placement in world.lot.parked
 		{
+			if leftInFleet == 0
+			{
+				livery = Int.random(in: 0 ..< Constants.liveryCount, using: &random)
+				leftInFleet = Int.random(in: Constants.fleetSizeRange, using: &random)
+			}
+			leftInFleet -= 1
+			let variant = Int.random(in: 1 ... Constants.trailersPerLivery, using: &random)
+
 			let boxes = World.parkedBoxes(placement, dimensions: world.dimensions)
 			let trailer = TrailerNode(
 				dimensions: world.dimensions,
-				bodyColour: Constants.parkedTrailerColours[index % Constants.parkedTrailerColours.count],
-				isPlayer: false)
+				texture: ProceduralTexture.bundled(String(format: Constants.parkedTrailerFile, livery, variant),
+												   extension: Constants.pngExtension),
+				fallbackColour: Constants.parkedFallbackTrailerColour, isPlayer: false)
 			trailer.position = scenePosition(centre(of: boxes[0]))
 			trailer.zRotation = sceneRotation(placement.heading)
 			trailer.castShadow(worldOffset: Constants.shadowOffset)
 			lotLayer.addChild(trailer)
 
-			let cab = CabNode(dimensions: world.dimensions,
-							  bodyColour: Constants.parkedCabColours[index % Constants.parkedCabColours.count],
-							  isPlayer: false)
+			let cab = CabNode(
+				dimensions: world.dimensions,
+				texture: ProceduralTexture.bundled(String(format: Constants.parkedCabFile, livery),
+												   extension: Constants.pngExtension),
+				fallbackColour: Constants.parkedFallbackCabColour, isPlayer: false)
 			cab.position = scenePosition(centre(of: boxes[1]))
 			cab.zRotation = sceneRotation(placement.heading)
 			cab.castShadow(worldOffset: Constants.shadowOffset)
@@ -874,10 +888,23 @@ final class GameScene: SKScene
 	{
 		trailerNode.removeFromParent()
 		cabNode.removeFromParent()
-		trailerNode = TrailerNode(dimensions: world.dimensions,
-								  bodyColour: Constants.playerTrailerColour, isPlayer: true)
-		cabNode = CabNode(dimensions: world.dimensions, bodyColour: Constants.playerCabColour, isPlayer: true)
+		trailerNode = GameScene.playerTrailerNode(dimensions: world.dimensions)
+		cabNode = GameScene.playerCabNode(dimensions: world.dimensions)
 		attachRig()
+	}
+
+	private static func playerTrailerNode(dimensions: TruckDimensions) -> TrailerNode
+	{
+		return TrailerNode(dimensions: dimensions,
+						   texture: ProceduralTexture.bundled(Constants.playerTrailerFile, extension: Constants.pngExtension),
+						   fallbackColour: Constants.playerTrailerColour, isPlayer: true)
+	}
+
+	private static func playerCabNode(dimensions: TruckDimensions) -> CabNode
+	{
+		return CabNode(dimensions: dimensions,
+					   texture: ProceduralTexture.bundled(Constants.playerCabFile, extension: Constants.pngExtension),
+					   fallbackColour: Constants.playerCabColour, isPlayer: true)
 	}
 
 	private func attachRig()

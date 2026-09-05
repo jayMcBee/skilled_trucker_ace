@@ -22,7 +22,8 @@ struct ProceduralTexture
 		static let glowInnerAlpha: CGFloat = 1
 		static let glowMidAlpha: CGFloat = 0.35
 		static let glowMidStop: CGFloat = 0.3
-		static let floorSubdirectory = "Floor"
+		/// Where the baked art lives when Xcode keeps the folders.
+		static let assetSubdirectories = ["Floor", "Trucks"]
 		/// Clear in the middle, night at the corners. Stops are (position, alpha).
 		static let vignetteStops: [(CGFloat, CGFloat)] = [(0, 0), (0.55, 0), (0.75, 0.25), (0.9, 0.55), (1, 0.85)]
 	}
@@ -67,13 +68,17 @@ struct ProceduralTexture
 		{
 			return texture
 		}
-		let located = Bundle.main.url(forResource: name, withExtension: fileExtension)
-			?? Bundle.main.url(forResource: name, withExtension: fileExtension,
-							   subdirectory: Constants.floorSubdirectory)
+		var located = Bundle.main.url(forResource: name, withExtension: fileExtension)
+		for folder in Constants.assetSubdirectories where located == nil
+		{
+			located = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: folder)
+		}
 		guard let url = located,
 			  let image = UIImage(contentsOfFile: url.path)
 		else { return nil }
 		let texture = SKTexture(image: image)
+		// Drawn well below its pixel size on the iPad: mipmaps keep the edges calm.
+		texture.usesMipmaps = true
 		cache[key] = texture
 		return texture
 	}
