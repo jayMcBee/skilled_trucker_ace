@@ -63,6 +63,9 @@ final class GameScene: SKScene
 	private var activeSoundChoice = SoundChoice.off
 	private var worldBasePosition = CGPoint.zero
 	private var activeWheelScale = GameOptions.steeredWheelScale
+	private var lastFrameSeconds = 1.0 / 60.0
+	/// True once the truck has been properly rolling, so the next stop gets its hiss.
+	private var wasRolling = false
 
 	/// Below this the rig counts as stopped, for the win check, the shift count and the lamps.
 	private var stoppedThreshold: Double
@@ -122,6 +125,8 @@ final class GameScene: SKScene
 		/// Backgrounding the app produces one enormous step that would tunnel the rig
 		/// straight through a parked truck.
 		static let longestTimestep = 1.0 / 30.0
+		/// Faster than this fraction of reverse speed counts as rolling, for the brake hiss.
+		static let rollingFractionForHiss = 0.3
 		static let metresPerSecondToKilometresPerHour = 3.6
 
 		static let padInset: CGFloat = 22
@@ -419,6 +424,7 @@ final class GameScene: SKScene
 		else { return }
 
 		let seconds = min(elapsed, Constants.longestTimestep)
+		lastFrameSeconds = seconds
 		if !isRunOver
 		{
 			advance(by: seconds)
@@ -436,6 +442,7 @@ final class GameScene: SKScene
 		isJammed = false
 		directionChanges = 0
 		lastTravelDirection = 0
+		wasRolling = false
 		throttle = 0
 		steerTarget = 0
 		driveTouch = nil
@@ -1144,6 +1151,7 @@ final class GameScene: SKScene
 		jammedLabel.isHidden = !isJammed
 
 		countDirectionChange()
+		hissOnStop()
 
 		if jammedNow && world.tuning.jackknifeEndsRun
 		{
@@ -1162,6 +1170,22 @@ final class GameScene: SKScene
 		}
 
 		updateBayReadout()
+	}
+
+	/// Air brakes: a truck that has been rolling lets its air out when it stops. Once per
+	/// stop, and not for a nudge.
+	private func hissOnStop()
+	{
+		let rollingSpeed = world.maxReverseSpeed * Constants.rollingFractionForHiss
+		if abs(rig.speed) > rollingSpeed
+		{
+			wasRolling = true
+		}
+		else if wasRolling && abs(rig.speed) < stoppedThreshold
+		{
+			wasRolling = false
+			sound?.playBrakeHiss()
+		}
 	}
 
 	/// Counts a shift when the rig actually reverses direction, not when a pad is pressed.
@@ -1386,6 +1410,7 @@ final class GameScene: SKScene
 		guard let sound = sound
 		else { return }
 		var state = SoundState()
+		state.seconds = lastFrameSeconds
 		if !isRunOver
 		{
 			let topSpeed = rig.speed >= 0 ? world.maxForwardSpeed : world.maxReverseSpeed
