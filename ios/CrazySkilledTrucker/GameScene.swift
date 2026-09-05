@@ -245,11 +245,14 @@ final class GameScene: SKScene
 		static let kerbLineWidth: CGFloat = 3
 		static let kerbLineAlpha: CGFloat = 0.55
 		static let lampGlowTextureDiameter = 128
-		static let lampWideGlowAlpha: CGFloat = 0.11
-		static let lampCoreGlowDiameterFraction = 0.8
-		static let lampCoreGlowAlpha: CGFloat = 0.16
-		static let lampHeadDiameter: CGFloat = 7
-		static let lampHeadAlpha: CGFloat = 0.9
+		/// Light on the ground, not a spot: the pool and the core are faint and wide,
+		/// and the head is a dim mark where the pole stands. All three add together at
+		/// the centre, so the sum is what to judge.
+		static let lampWideGlowAlpha: CGFloat = 0.06
+		static let lampCoreGlowDiameterFraction = 0.55
+		static let lampCoreGlowAlpha: CGFloat = 0.06
+		static let lampHeadDiameter: CGFloat = 5
+		static let lampHeadAlpha: CGFloat = 0.3
 		/// Stretch of the vignette past the screen, so its clear middle covers the lot
 		/// and its dark rim reaches the corners.
 		static let vignetteSpread: CGFloat = 1.15
