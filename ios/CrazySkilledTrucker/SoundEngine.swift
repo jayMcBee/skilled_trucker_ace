@@ -333,6 +333,13 @@ final class SampledSoundEngine: SoundEngine
 	private func buildGraph()
 	{
 		isGraphBuilt = true
+		// The shared chain first: a loop cannot be connected to a mixer that is not
+		// attached yet, and AVAudioEngine raises rather than waits.
+		engine.attach(engineMixer)
+		engine.attach(exhaustFilter)
+		engine.attach(roomMixer)
+		engine.attach(room)
+
 		for entry in Constants.loopFiles
 		{
 			if let buffer = buffer(named: entry.name)
@@ -346,10 +353,6 @@ final class SampledSoundEngine: SoundEngine
 		}
 
 		let format = loops.first?.buffer.format ?? coastLoop?.buffer.format
-		engine.attach(engineMixer)
-		engine.attach(exhaustFilter)
-		engine.attach(roomMixer)
-		engine.attach(room)
 		exhaustFilter.bands[0].filterType = .lowPass
 		exhaustFilter.bands[0].frequency = exhaustCutoff
 		exhaustFilter.bands[0].bandwidth = Constants.exhaustBandwidth
