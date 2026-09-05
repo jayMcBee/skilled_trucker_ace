@@ -483,6 +483,9 @@ struct Level
 	let leftRowX: Double
 	let rightRowX: Double
 	let start: Placement
+	/// Everything the lot parks or starts, in canvas units: the slots and the start rig.
+	/// The screen fits this, not the canvas, which is far wider than the lot.
+	let bounds: Rect
 }
 
 struct Lot
@@ -583,7 +586,8 @@ struct World
 									   heading: -Double.pi / 2.0)
 
 		let uncentred = Level(rowPitch: rowPitch, firstSlotY: firstSlotY,
-							  leftRowX: leftRowX, rightRowX: rightRowX, start: startPlacement)
+							  leftRowX: leftRowX, rightRowX: rightRowX, start: startPlacement,
+							  bounds: Rect(x: 0, y: 0, width: 0, height: 0))
 		self.level = World.centred(uncentred, dimensions: dimensions)
 		self.lot = World.buildLot(level: self.level, dimensions: dimensions)
 		self.obstacles = World.obstacles(for: self.lot, dimensions: dimensions, lotEdge: lotEdge)
@@ -693,7 +697,9 @@ struct World
 					 rightRowX: level.rightRowX + shiftX,
 					 start: Placement(position: Point(x: level.start.position.x + shiftX,
 													  y: level.start.position.y + shiftY),
-									  heading: level.start.heading))
+									  heading: level.start.heading),
+					 bounds: Rect(x: lowestX + shiftX, y: lowestY + shiftY,
+								  width: highestX - lowestX, height: highestY - lowestY))
 	}
 
 	private static func buildLot(level: Level, dimensions: TruckDimensions) -> Lot

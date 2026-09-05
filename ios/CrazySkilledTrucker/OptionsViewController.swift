@@ -29,6 +29,7 @@ final class OptionsViewController: UIViewController
 	private let particlesSwitch = UISwitch()
 	private let soundControl = UISegmentedControl(items: Constants.soundNames)
 	private let lotEdgeControl = UISegmentedControl(items: Constants.lotEdgeNames)
+	private let lotAcrossSwitch = UISwitch()
 
 	private enum Constants
 	{
@@ -65,6 +66,7 @@ final class OptionsViewController: UIViewController
 		particlesSwitch.isOn = GameOptions.particlesEnabled
 		soundControl.selectedSegmentIndex = GameOptions.soundChoice.rawValue
 		lotEdgeControl.selectedSegmentIndex = GameOptions.lotEdge.rawValue
+		lotAcrossSwitch.isOn = GameOptions.lotAcrossScreen
 
 		for caption in [forwardCaption, reverseCaption]
 		{
@@ -81,6 +83,7 @@ final class OptionsViewController: UIViewController
 		particlesSwitch.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
 		soundControl.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
 		lotEdgeControl.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
+		lotAcrossSwitch.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
 
 		let stack = UIStackView(arrangedSubviews: [
 			titled("Handling preset", presetControl),
@@ -89,6 +92,7 @@ final class OptionsViewController: UIViewController
 			row("Jackknife ends the run", jackknifeSwitch),
 			titled("Lot edge (open: drive anywhere, kerb: a scrape on the edge ends the run)", lotEdgeControl),
 			row("Swap the pads (drive on the right)", swapSwitch),
+			row("Lot across the screen (lane left to right)", lotAcrossSwitch),
 			row("Particle effects", particlesSwitch),
 			titled("Sound engine", soundControl)
 		])
@@ -142,6 +146,7 @@ final class OptionsViewController: UIViewController
 		GameOptions.particlesEnabled = particlesSwitch.isOn
 		GameOptions.soundChoice = SoundChoice(rawValue: soundControl.selectedSegmentIndex) ?? .off
 		GameOptions.lotEdge = LotEdge(rawValue: lotEdgeControl.selectedSegmentIndex) ?? .open
+		GameOptions.lotAcrossScreen = lotAcrossSwitch.isOn
 		refreshCaptions()
 	}
 

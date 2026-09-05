@@ -383,6 +383,33 @@ final class RigTests: XCTestCase
 		}
 	}
 
+	func testLevelBoundsHoldEveryParkedBoxAndTheStartRig()
+	{
+		for preset in Preset.all
+		{
+			let world = World(preset: preset)
+			let bounds = world.level.bounds
+			let inside = { (point: Point) -> Bool in
+				return point.x >= bounds.x - 1e-9 && point.x <= bounds.x + bounds.width + 1e-9
+					&& point.y >= bounds.y - 1e-9 && point.y <= bounds.y + bounds.height + 1e-9
+			}
+			for index in 0 ..< world.lot.parked.count * 2
+			{
+				for corner in world.obstacles[index]
+				{
+					XCTAssertTrue(inside(corner), "a parked box must lie inside the level bounds [\(preset.name)]")
+				}
+			}
+			for box in Rig(at: world.level.start, world: world).collisionBoxes
+			{
+				for corner in box
+				{
+					XCTAssertTrue(inside(corner), "the start rig must lie inside the level bounds [\(preset.name)]")
+				}
+			}
+		}
+	}
+
 	func testLotEdgeDecidesWhetherTheWallsCollide()
 	{
 		let open = World(preset: .standard, lotEdge: .open)

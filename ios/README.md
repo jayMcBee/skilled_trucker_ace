@@ -79,8 +79,12 @@ is ever on screen. A soft grime layer is multiplied over it to break the repeat.
 stains, tyre marks and puddles are baked decal PNGs placed by seed: oil where the tractors
 stand, tyre marks at the angle of a truck swinging into a slot. Stall lines and the bay are
 one strip of eroded paint, stretched and tinted. Three sodium lamps: a wide pool, a brighter
-core and the lamp head. A vignette over the whole screen darkens the far asphalt into night,
-and the lot is drawn a few percent zoomed out so a strip of it shows.
+core and the lamp head. A vignette darkens the corners of the screen into night.
+
+The screen fits the lot's own bounds, not the old 850 x 650 web canvas, into the space left
+over by the pads and the HUD. By default the lot is turned across the screen: the lane runs
+left to right, the truck starts at the left end facing right, and the bay is in the top row.
+That is an option, because it is a matter of feel.
 
 The walls are gone as pictures. With the open edge nothing stops the truck. With the kerb the
 collision edge is a worn yellow line.

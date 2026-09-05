@@ -253,13 +253,18 @@ final class GameScene: SKScene
 		static let lampCoreGlowAlpha: CGFloat = 0.06
 		static let lampHeadDiameter: CGFloat = 5
 		static let lampHeadAlpha: CGFloat = 0.3
-		/// Stretch of the vignette past the screen, so its clear middle covers the lot
-		/// and its dark rim reaches the corners.
-		static let vignetteSpread: CGFloat = 1.15
+		/// Stretch of the vignette past the screen: the lot now fills the width, so only
+		/// the corners go dark.
+		static let vignetteSpread: CGFloat = 1.6
 		static let vignetteTextureDiameter = 512
-		/// A little zoomed out, so a strip of the outer asphalt shows and the lot reads
-		/// as part of something larger.
-		static let worldZoom: CGFloat = 0.94
+		/// Asphalt kept around the lot's bounds when it is fitted to the screen, in world
+		/// units, so the lot reads as part of something larger.
+		static let lotMargin: CGFloat = 24
+		/// The HUD text at the top needs this much of the screen.
+		static let hudTopStrip: CGFloat = 60
+		/// Turned this way, canvas up points to the right: the truck starts at the left
+		/// end of the lane facing right, and the bay is in the top row.
+		static let lotAcrossRotation: CGFloat = -.pi / 2
 
 		static let exhaustTextureDiameter = 32
 		static let exhaustLifetime: CGFloat = 1.4
@@ -1050,18 +1055,35 @@ final class GameScene: SKScene
 		hudLayer.addChild(button)
 	}
 
-	/// Everything in scene space is placed from the real size, so the pads sit in the
-	/// corners of any iPad while the lot letterboxes in the middle.
+	/// The lot's own bounds are fitted into the screen left over by the pads and the
+	/// HUD, turned across the screen when asked. The pads and the HUD are placed from
+	/// the real size, so they sit the same on any iPad.
 	private func layoutScreen()
 	{
-		let fit = min(size.width / Constants.canvasWidth, size.height / Constants.canvasHeight) * Constants.worldZoom
-		worldLayer.setScale(fit)
-		worldBasePosition = CGPoint(x: (size.width - Constants.canvasWidth * fit) / 2,
-									y: (size.height - Constants.canvasHeight * fit) / 2)
-		worldLayer.position = worldBasePosition
-
 		let inset = Constants.padInset
 		let driveOnLeft = !GameOptions.swapPads
+		let padStrip = Constants.padThickness + inset * 2
+		let free = CGRect(x: driveOnLeft ? padStrip : inset, y: padStrip,
+						  width: size.width - padStrip - inset,
+						  height: size.height - padStrip - Constants.hudTopStrip)
+
+		let rotation = GameOptions.lotAcrossScreen ? Constants.lotAcrossRotation : 0
+		let bounds = world.level.bounds
+		let across = GameOptions.lotAcrossScreen
+		let lotWidth = CGFloat(across ? bounds.height : bounds.width) + Constants.lotMargin * 2
+		let lotHeight = CGFloat(across ? bounds.width : bounds.height) + Constants.lotMargin * 2
+		let fit = min(free.width / lotWidth, free.height / lotHeight)
+		worldLayer.zRotation = rotation
+		worldLayer.setScale(fit)
+
+		let boundsCentre = scenePosition(Point(x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2))
+		let turned = CGPoint(x: (boundsCentre.x * cos(rotation) - boundsCentre.y * sin(rotation)) * fit,
+							 y: (boundsCentre.x * sin(rotation) + boundsCentre.y * cos(rotation)) * fit)
+		worldBasePosition = CGPoint(x: free.midX - turned.x, y: free.midY - turned.y)
+		worldLayer.position = worldBasePosition
+		// The one piece of text in the world must stay upright whichever way the lot turns.
+		jammedLabel.zRotation = -rotation
+
 		let driveX = driveOnLeft ? inset + Constants.padThickness / 2 : size.width - inset - Constants.padThickness / 2
 		let steerX = driveOnLeft ? size.width - inset - Constants.steerPadLength / 2 : inset + Constants.steerPadLength / 2
 		drivePad.position = CGPoint(x: driveX, y: inset + Constants.drivePadLength / 2)

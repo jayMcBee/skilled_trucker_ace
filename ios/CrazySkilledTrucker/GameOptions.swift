@@ -58,6 +58,14 @@ struct GameOptions
 		set { store.set(newValue, forKey: Constants.particlesEnabledKey) }
 	}
 
+	/// The lane runs left to right across the landscape screen, which fits it far
+	/// better than the tall strip the web canvas was.
+	static var lotAcrossScreen: Bool
+	{
+		get { return bool(forKey: Constants.lotAcrossScreenKey, fallback: true) }
+		set { store.set(newValue, forKey: Constants.lotAcrossScreenKey) }
+	}
+
 	static var lotEdge: LotEdge
 	{
 		get { return LotEdge(rawValue: store.integer(forKey: Constants.lotEdgeKey)) ?? .open }
@@ -102,6 +110,7 @@ struct GameOptions
 		static let particlesEnabledKey = "particlesEnabled"
 		static let soundChoiceKey = "soundChoice"
 		static let lotEdgeKey = "lotEdge"
+		static let lotAcrossScreenKey = "lotAcrossScreen"
 	}
 
 	// MARK: - Private
