@@ -5,8 +5,8 @@
 //	drawn in local units where +x is forward. The sprite is exactly the collision box,
 //	so the picture and the shape it collides as cannot drift apart: an obstacle wider
 //	than its picture is invisible by construction, and one narrower than it feels
-//	cheated. The player's steered wheels are the one deliberate exception, drawn 2px
-//	proud of the cab as the steering readout, which is forgiving rather than punishing.
+//	cheated. The player's cab is baked without front wheels; they are drawn here in the
+//	same style and place as the baked tyres, and they turn with the wheel.
 //
 //	--------------------------------------------------
 //							 Copyright (c) 2026 Jan Barnholt
@@ -18,9 +18,10 @@ import SpriteKit
 private enum TruckPalette
 {
 	static let shadowColour = SKColor(white: 0, alpha: 0.55)
-	static let tyreColour = SKColor(red: 0.01, green: 0.02, blue: 0.09, alpha: 1)
-	static let tyreCoreColour = SKColor(red: 0.89, green: 0.91, blue: 0.94, alpha: 1)
-	static let tyreCornerRadius: CGFloat = 1
+	/// The baked tyres' colours, so the turning pair matches the rest of the lot.
+	static let tyreColour = SKColor(red: 0.094, green: 0.094, blue: 0.11, alpha: 1)
+	static let tyreTreadColour = SKColor(red: 0.275, green: 0.275, blue: 0.298, alpha: 1)
+	static let tyreCornerRadius: CGFloat = 0.75
 	static let lampRedColour = SKColor(red: 0.94, green: 0.27, blue: 0.27, alpha: 1)
 	static let lampWhiteColour = SKColor(white: 1, alpha: 1)
 	static let glowTextureDiameter = 64
@@ -172,27 +173,28 @@ final class CabNode: SKNode
 
 	private enum Constants
 	{
-		static let wheelLengthFraction = 0.40
-		static let wheelWidthFraction = 0.17
-		static let wheelMinimumLength: CGFloat = 6
-		static let wheelMinimumWidth: CGFloat = 2.5
-		static let frontAxleFraction = 0.34
-		static let wheelTrackFraction = 0.40
-		static let casingPadding: CGFloat = 1
+		/// The baked front tyres: 20 x 10 px in a 112 x 96 px cab, centred 20 px from the
+		/// front and 7 px from each side, with a lighter tread block inside.
+		static let wheelLengthFraction = 0.176
+		static let wheelWidthFraction = 0.102
+		static let treadLengthFraction = 0.7
+		static let treadWidthFraction = 0.4
+		static let frontAxleFraction = 0.317
+		static let wheelTrackFraction = 0.418
 		/// The stack in the baked cab: rear left of the roof.
 		static let exhaustXFraction = -0.36
 		static let exhaustYFraction = 0.35
-		/// Above the body, so the readout is never covered.
+		/// Above the body, so the turning pair is never covered.
 		static let steeredWheelZ: CGFloat = 2
-		/// Full lock is only 24 degrees, which on a 13px wheel moves the tip under 3px.
-		/// Drawn 1.6x, it reads. The player needs direction and size, not a protractor.
-		static let steerExaggeration: CGFloat = 1.6
+		/// Full lock is only 24 degrees, which on a 5-unit wheel moves the tip about 2px.
+		/// A little more than real still reads as "turning" without looking bent.
+		static let steerExaggeration: CGFloat = 1.3
 	}
 
 	// MARK: - Init
 
-	/// The player's cab is baked without front wheels and gets the steered pair here,
-	/// oversized and proud of the body. A parked cab has its wheels baked inside the box.
+	/// The player's cab is baked without front wheels and gets the steered pair here, in
+	/// the baked tyres' size, place and colours. A parked cab has its wheels baked in.
 	init(dimensions: TruckDimensions, texture: SKTexture?, fallbackColour: SKColor, isPlayer: Bool)
 	{
 		let length = CGFloat(dimensions.cabLength)
@@ -204,22 +206,22 @@ final class CabNode: SKNode
 		var wheels: [SKNode] = []
 		if isPlayer
 		{
-			let wheelLength = max(Constants.wheelMinimumLength, length * Constants.wheelLengthFraction)
-			let wheelWidth = max(Constants.wheelMinimumWidth, width * Constants.wheelWidthFraction)
+			let wheelLength = length * Constants.wheelLengthFraction
+			let wheelWidth = width * Constants.wheelWidthFraction
 			for side in TruckPalette.sides
 			{
 				let wheel = SKNode()
 				wheel.position = CGPoint(x: length * Constants.frontAxleFraction,
 										 y: side * width * Constants.wheelTrackFraction)
-				let casing = TruckPaint.rectangle(
+				let tyre = TruckPaint.rectangle(centre: .zero, size: CGSize(width: wheelLength, height: wheelWidth),
+												fill: TruckPalette.tyreColour, corner: TruckPalette.tyreCornerRadius)
+				let tread = TruckPaint.rectangle(
 					centre: .zero,
-					size: CGSize(width: wheelLength + Constants.casingPadding * 2,
-								 height: wheelWidth + Constants.casingPadding * 2),
-					fill: TruckPalette.tyreColour, corner: TruckPalette.tyreCornerRadius)
-				let core = TruckPaint.rectangle(centre: .zero, size: CGSize(width: wheelLength, height: wheelWidth),
-												fill: TruckPalette.tyreCoreColour)
-				wheel.addChild(casing)
-				wheel.addChild(core)
+					size: CGSize(width: wheelLength * Constants.treadLengthFraction,
+								 height: wheelWidth * Constants.treadWidthFraction),
+					fill: TruckPalette.tyreTreadColour)
+				wheel.addChild(tyre)
+				wheel.addChild(tread)
 				wheels.append(wheel)
 			}
 		}

@@ -91,9 +91,10 @@ fleet names, each with two trailers of different types out of box, reefer with a
 curtainsider, flatbed with a tarp or a stack of pipes, tanker, and container on a chassis.
 Parked trucks take their livery in fleets of one to three neighbours, the way a haulier's
 trucks park together. The player drives a white box with a red cab. Every sprite is exactly
-its collision box. The tail lamps keep an additive glow on top, and the player's steered
-wheels are drawn 1.6x their true angle, 2px proud of the cab, as the steering readout.
-Shadows fall the same way on every truck.
+its collision box. The tail lamps keep an additive glow on top. The player's cab is baked
+without front wheels; the game draws them in the baked tyres' size, place and colours and
+turns them 1.3x the wheel angle, a detail that moves, not a gauge. The wedge at the nose is
+the readout. Shadows fall the same way on every truck.
 
 Effects: exhaust from the cab stack that thickens with throttle, brake lamps, white reverse
 lamps, a dust puff and a clunk when the fold jams, and on a scrape: sparks, debris, dust, a
