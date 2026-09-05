@@ -62,7 +62,7 @@ struct GameOptions
 	/// A dial while the look is being found.
 	static var steeredWheelScale: Double
 	{
-		get { return double(forKey: Constants.steeredWheelScaleKey, fallback: 1) }
+		get { return double(forKey: Constants.steeredWheelScaleKey, fallback: Constants.defaultSteeredWheelScale) }
 		set { store.set(newValue, forKey: Constants.steeredWheelScaleKey) }
 	}
 
@@ -123,6 +123,8 @@ struct GameOptions
 		static let lotEdgeKey = "lotEdge"
 		static let lotAcrossScreenKey = "lotAcrossScreen"
 		static let steeredWheelScaleKey = "steeredWheelScale"
+		/// The baked tyre read as tiny on the player's cab. Found by play.
+		static let defaultSteeredWheelScale = 1.6
 	}
 
 	// MARK: - Private

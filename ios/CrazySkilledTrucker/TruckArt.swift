@@ -18,9 +18,10 @@ import SpriteKit
 private enum TruckPalette
 {
 	static let shadowColour = SKColor(white: 0, alpha: 0.55)
-	/// The baked tyres' dark, with a light tread so the turning pair reads on the red cab.
+	/// The baked tyres' dark, with a mid-grey tread: enough to read on the red cab
+	/// without turning the pair into two white bars.
 	static let tyreColour = SKColor(red: 0.094, green: 0.094, blue: 0.11, alpha: 1)
-	static let tyreTreadColour = SKColor(red: 0.85, green: 0.87, blue: 0.9, alpha: 1)
+	static let tyreTreadColour = SKColor(red: 0.52, green: 0.54, blue: 0.58, alpha: 1)
 	static let tyreCornerRadius: CGFloat = 0.75
 	static let lampRedColour = SKColor(red: 0.94, green: 0.27, blue: 0.27, alpha: 1)
 	static let lampWhiteColour = SKColor(white: 1, alpha: 1)
