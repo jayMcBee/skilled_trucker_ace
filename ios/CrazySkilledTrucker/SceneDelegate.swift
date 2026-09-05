@@ -23,7 +23,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate
 		else { return }
 
 		let window = UIWindow(windowScene: windowScene)
-		window.rootViewController = ViewController()
+		window.rootViewController = GameViewController()
 		window.makeKeyAndVisible()
 		self.window = window
 	}

@@ -1,5 +1,5 @@
 //	==================================================
-//	'ViewController.swift'
+//	'GameViewController.swift'
 //	--------------------------------------------------
 //	Hosts the SpriteKit scene and presents the options sheet over it.
 //
@@ -10,7 +10,7 @@
 import UIKit
 import SpriteKit
 
-final class ViewController: UIViewController
+final class GameViewController: UIViewController
 {
 	// MARK: - Private Properties
 
