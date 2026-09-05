@@ -58,6 +58,17 @@ struct GameOptions
 		set { store.set(newValue, forKey: Constants.particlesEnabledKey) }
 	}
 
+	/// How big the player's steered wheels are drawn, as a multiple of the baked tyre.
+	/// A dial while the look is being found.
+	static var steeredWheelScale: Double
+	{
+		get { return double(forKey: Constants.steeredWheelScaleKey, fallback: 1) }
+		set { store.set(newValue, forKey: Constants.steeredWheelScaleKey) }
+	}
+
+	static let lowestSteeredWheelScale = 0.8
+	static let highestSteeredWheelScale = 2.0
+
 	/// The lane runs left to right across the landscape screen, which fits it far
 	/// better than the tall strip the web canvas was.
 	static var lotAcrossScreen: Bool
@@ -111,6 +122,7 @@ struct GameOptions
 		static let soundChoiceKey = "soundChoice"
 		static let lotEdgeKey = "lotEdge"
 		static let lotAcrossScreenKey = "lotAcrossScreen"
+		static let steeredWheelScaleKey = "steeredWheelScale"
 	}
 
 	// MARK: - Private

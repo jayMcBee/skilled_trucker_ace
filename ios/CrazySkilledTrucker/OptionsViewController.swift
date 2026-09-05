@@ -30,6 +30,8 @@ final class OptionsViewController: UIViewController
 	private let soundControl = UISegmentedControl(items: Constants.soundNames)
 	private let lotEdgeControl = UISegmentedControl(items: Constants.lotEdgeNames)
 	private let lotAcrossSwitch = UISwitch()
+	private let wheelSlider = UISlider()
+	private let wheelCaption = UILabel()
 
 	private enum Constants
 	{
@@ -67,8 +69,11 @@ final class OptionsViewController: UIViewController
 		soundControl.selectedSegmentIndex = GameOptions.soundChoice.rawValue
 		lotEdgeControl.selectedSegmentIndex = GameOptions.lotEdge.rawValue
 		lotAcrossSwitch.isOn = GameOptions.lotAcrossScreen
+		wheelSlider.minimumValue = Float(GameOptions.lowestSteeredWheelScale)
+		wheelSlider.maximumValue = Float(GameOptions.highestSteeredWheelScale)
+		wheelSlider.value = Float(GameOptions.steeredWheelScale)
 
-		for caption in [forwardCaption, reverseCaption]
+		for caption in [forwardCaption, reverseCaption, wheelCaption]
 		{
 			caption.font = .monospacedDigitSystemFont(ofSize: Constants.captionFontSize, weight: .regular)
 			caption.textColor = .secondaryLabel
@@ -84,6 +89,7 @@ final class OptionsViewController: UIViewController
 		soundControl.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
 		lotEdgeControl.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
 		lotAcrossSwitch.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
+		wheelSlider.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
 
 		let stack = UIStackView(arrangedSubviews: [
 			titled("Handling preset", presetControl),
@@ -93,6 +99,7 @@ final class OptionsViewController: UIViewController
 			titled("Lot edge (open: drive anywhere, kerb: a scrape on the edge ends the run)", lotEdgeControl),
 			row("Swap the pads (drive on the right)", swapSwitch),
 			row("Lot across the screen (lane left to right)", lotAcrossSwitch),
+			titled("Steered wheel size", wheelSlider, caption: wheelCaption),
 			row("Particle effects", particlesSwitch),
 			titled("Sound engine", soundControl)
 		])
@@ -138,6 +145,7 @@ final class OptionsViewController: UIViewController
 	{
 		forwardSlider.value = (forwardSlider.value / Constants.sliderStep).rounded() * Constants.sliderStep
 		reverseSlider.value = (reverseSlider.value / Constants.sliderStep).rounded() * Constants.sliderStep
+		wheelSlider.value = (wheelSlider.value / Constants.sliderStep).rounded() * Constants.sliderStep
 		GameOptions.presetIndex = presetControl.selectedSegmentIndex
 		GameOptions.forwardFactor = Double(forwardSlider.value)
 		GameOptions.reverseFactor = Double(reverseSlider.value)
@@ -147,6 +155,7 @@ final class OptionsViewController: UIViewController
 		GameOptions.soundChoice = SoundChoice(rawValue: soundControl.selectedSegmentIndex) ?? .off
 		GameOptions.lotEdge = LotEdge(rawValue: lotEdgeControl.selectedSegmentIndex) ?? .open
 		GameOptions.lotAcrossScreen = lotAcrossSwitch.isOn
+		GameOptions.steeredWheelScale = Double(wheelSlider.value)
 		refreshCaptions()
 	}
 
@@ -161,6 +170,8 @@ final class OptionsViewController: UIViewController
 		let foldText = foldClock.map { String(format: "%.1f s", $0) } ?? "never"
 		reverseCaption.text = String(format: "%.1f km/h  (%.1f×). Fold clock %@: seconds of full-lock reversing before it jams.",
 									 world.reverseKilometresPerHour, world.tuning.reverseFactor, foldText)
+		wheelCaption.text = String(format: "%.1f× the baked tyre. The pair stays inside the cab's box at any size.",
+								   GameOptions.steeredWheelScale)
 	}
 
 	private func titled(_ title: String, _ control: UIView, caption: UILabel? = nil) -> UIStackView

@@ -18,9 +18,9 @@ import SpriteKit
 private enum TruckPalette
 {
 	static let shadowColour = SKColor(white: 0, alpha: 0.55)
-	/// The baked tyres' colours, so the turning pair matches the rest of the lot.
+	/// The baked tyres' dark, with a light tread so the turning pair reads on the red cab.
 	static let tyreColour = SKColor(red: 0.094, green: 0.094, blue: 0.11, alpha: 1)
-	static let tyreTreadColour = SKColor(red: 0.275, green: 0.275, blue: 0.298, alpha: 1)
+	static let tyreTreadColour = SKColor(red: 0.85, green: 0.87, blue: 0.9, alpha: 1)
 	static let tyreCornerRadius: CGFloat = 0.75
 	static let lampRedColour = SKColor(red: 0.94, green: 0.27, blue: 0.27, alpha: 1)
 	static let lampWhiteColour = SKColor(white: 1, alpha: 1)
@@ -194,8 +194,10 @@ final class CabNode: SKNode
 	// MARK: - Init
 
 	/// The player's cab is baked without front wheels and gets the steered pair here, in
-	/// the baked tyres' size, place and colours. A parked cab has its wheels baked in.
-	init(dimensions: TruckDimensions, texture: SKTexture?, fallbackColour: SKColor, isPlayer: Bool)
+	/// the baked tyres' place, at `wheelScale` times their size, kept inside the box. A
+	/// parked cab has its wheels baked in.
+	init(dimensions: TruckDimensions, texture: SKTexture?, fallbackColour: SKColor, isPlayer: Bool,
+		 wheelScale: CGFloat = 1)
 	{
 		let length = CGFloat(dimensions.cabLength)
 		let width = CGFloat(dimensions.cabWidth)
@@ -206,13 +208,14 @@ final class CabNode: SKNode
 		var wheels: [SKNode] = []
 		if isPlayer
 		{
-			let wheelLength = length * Constants.wheelLengthFraction
-			let wheelWidth = width * Constants.wheelWidthFraction
+			let wheelLength = length * Constants.wheelLengthFraction * wheelScale
+			let wheelWidth = width * Constants.wheelWidthFraction * wheelScale
+			// A bigger tyre moves inward rather than past the box edge.
+			let track = min(width * Constants.wheelTrackFraction, width / 2 - wheelWidth / 2)
 			for side in TruckPalette.sides
 			{
 				let wheel = SKNode()
-				wheel.position = CGPoint(x: length * Constants.frontAxleFraction,
-										 y: side * width * Constants.wheelTrackFraction)
+				wheel.position = CGPoint(x: length * Constants.frontAxleFraction, y: side * track)
 				let tyre = TruckPaint.rectangle(centre: .zero, size: CGSize(width: wheelLength, height: wheelWidth),
 												fill: TruckPalette.tyreColour, corner: TruckPalette.tyreCornerRadius)
 				let tread = TruckPaint.rectangle(

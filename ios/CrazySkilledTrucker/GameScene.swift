@@ -62,6 +62,7 @@ final class GameScene: SKScene
 	private var sound: SoundEngine?
 	private var activeSoundChoice = SoundChoice.off
 	private var worldBasePosition = CGPoint.zero
+	private var activeWheelScale = GameOptions.steeredWheelScale
 
 	/// Below this the rig counts as stopped, for the win check, the shift count and the lamps.
 	private var stoppedThreshold: Double
@@ -464,6 +465,12 @@ final class GameScene: SKScene
 			buildRig()
 			refreshSetupLabel()
 			restart()
+		}
+		if GameOptions.steeredWheelScale != activeWheelScale
+		{
+			activeWheelScale = GameOptions.steeredWheelScale
+			buildRig()
+			layoutRig()
 		}
 		layoutScreen()
 		if GameOptions.soundChoice != activeSoundChoice
@@ -909,7 +916,8 @@ final class GameScene: SKScene
 	{
 		return CabNode(dimensions: dimensions,
 					   texture: ProceduralTexture.bundled(Constants.playerCabFile, extension: Constants.pngExtension),
-					   fallbackColour: Constants.playerCabColour, isPlayer: true)
+					   fallbackColour: Constants.playerCabColour, isPlayer: true,
+					   wheelScale: CGFloat(GameOptions.steeredWheelScale))
 	}
 
 	private func attachRig()
