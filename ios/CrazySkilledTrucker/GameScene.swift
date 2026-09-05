@@ -1411,6 +1411,7 @@ final class GameScene: SKScene
 		else { return }
 		var state = SoundState()
 		state.seconds = lastFrameSeconds
+		state.pitch = GameOptions.enginePitch
 		if !isRunOver
 		{
 			let topSpeed = rig.speed >= 0 ? world.maxForwardSpeed : world.maxReverseSpeed

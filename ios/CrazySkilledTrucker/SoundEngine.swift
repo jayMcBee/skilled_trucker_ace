@@ -27,6 +27,8 @@ struct SoundState
 	var isReversing = false
 	/// The frame's length, for smoothing.
 	var seconds = 1.0 / 60.0
+	/// Multiplies every engine frequency: 1 is the model as rendered, less is a bigger engine.
+	var pitch = 1.0
 }
 
 protocol SoundEngine: AnyObject
@@ -270,7 +272,7 @@ final class SampledSoundEngine: SoundEngine
 			let target = sin(tent * Float.pi / 2) * overall
 			loop.gain.outputVolume = approached(loop.gain.outputVolume, toward: target,
 												over: Constants.gainSmoothingSeconds, frame: frame)
-			let rate = min(Constants.highestRate, max(Constants.lowestRate, rpm / loop.rpm))
+			let rate = min(Constants.highestRate, max(Constants.lowestRate, rpm / loop.rpm)) * Float(state.pitch)
 			loop.varispeed.rate = approached(loop.varispeed.rate, toward: rate,
 											 over: Constants.rateSmoothingSeconds, frame: frame)
 		}
@@ -509,6 +511,7 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 	// MARK: - Control values, stored by the main thread, loaded on the audio thread
 
 	let load = Atomic<Float>(0)
+	let pitch = Atomic<Float>(1)
 	let coasting = Atomic<Float>(0)
 	let throttle = Atomic<Float>(0)
 	let isReversing = Atomic<Bool>(false)
@@ -525,6 +528,7 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 	private var cylinderLags: [Float] = []
 
 	private var smoothedLoad: Float = 0
+	private var smoothedPitch: Float = 1
 	private var smoothedCoast: Float = 0
 	private var smoothedExhaust: Float = Constants.exhaustClosedHz
 	private var firingPhase: Float = 0
@@ -606,6 +610,7 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 		static let coastCutoffHz: Float = 900
 		static let coastLevel: Float = 0.5
 		static let loadSmoothing: Float = 0.00008
+		static let pitchSmoothing: Float = 0.1
 		static let masterGain: Float = 0.45
 		static let idleGain: Float = 0.55
 		static let gainRiseWithLoad: Float = 0.45
@@ -655,7 +660,7 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 		}
 		coastFilter.setLowPass(frequency: Constants.coastCutoffHz, q: 0.7, sampleRate: sampleRate)
 		hissFilter.setBandPass(frequency: Constants.hissHz, q: Constants.hissQ, sampleRate: sampleRate)
-		setBodyFilters(load: 0)
+		setBodyFilters(load: 0, pitch: 1)
 	}
 
 	// MARK: - Public API
@@ -671,13 +676,15 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 		}
 
 		let targetLoad = load.load(ordering: .relaxed)
+		let targetPitch = pitch.load(ordering: .relaxed)
 		let targetCoast = coasting.load(ordering: .relaxed)
 		let throttleLevel = abs(throttle.load(ordering: .relaxed))
 		let reversing = isReversing.load(ordering: .relaxed)
 		latchTriggers()
 
 		// Filters follow the load once per buffer: cheap, and a buffer is short.
-		setBodyFilters(load: smoothedLoad)
+		smoothedPitch += (targetPitch - smoothedPitch) * Constants.pitchSmoothing
+		setBodyFilters(load: smoothedLoad, pitch: smoothedPitch)
 		let targetExhaust = Constants.exhaustClosedHz + (Constants.exhaustOpenHz - Constants.exhaustClosedHz) * throttleLevel
 		smoothedExhaust += (targetExhaust - smoothedExhaust) * 0.2
 		exhaust.setLowPass(frequency: smoothedExhaust, q: Constants.exhaustQ, sampleRate: sampleRate)
@@ -693,7 +700,7 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 		{
 			smoothedLoad += (targetLoad - smoothedLoad) * Constants.loadSmoothing
 			smoothedCoast += (targetCoast - smoothedCoast) * Constants.loadSmoothing
-			var sample = engineSample(load: smoothedLoad, secondsPerSample: secondsPerSample)
+			var sample = engineSample(load: smoothedLoad, pitch: smoothedPitch, secondsPerSample: secondsPerSample)
 			sample += coastFilter.process(nextNoise()) * smoothedCoast * Constants.coastLevel
 
 			// The beeper is a gated tone. The gate is smoothed so it never clicks.
@@ -785,9 +792,9 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 
 	/// One sample of the diesel: fire the next cylinder when its moment comes, sum the
 	/// live pulses, pass them through the body and the exhaust, add rattle, whine and hum.
-	private func engineSample(load: Float, secondsPerSample: Float) -> Float
+	private func engineSample(load: Float, pitch: Float, secondsPerSample: Float) -> Float
 	{
-		let firingRate = EngineLoad.firingRate(rpm: EngineLoad.rpm(atLoad: load))
+		let firingRate = EngineLoad.firingRate(rpm: EngineLoad.rpm(atLoad: load)) * pitch
 		firingPhase += firingRate * secondsPerSample
 		if firingPhase >= firingTarget
 		{
@@ -801,7 +808,7 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 
 		let tau = Constants.pulseTauIdle - Constants.pulseTauDropWithLoad * load
 		let pulseDecay = exp(-secondsPerSample / tau)
-		let bodyTone = Constants.bodyToneIdleHz + Constants.bodyToneRiseHz * load
+		let bodyTone = (Constants.bodyToneIdleHz + Constants.bodyToneRiseHz * load) * pitch
 		var excitation: Float = 0
 		for index in pulses.indices where pulses[index].envelope > Constants.envelopeFloor
 		{
@@ -835,13 +842,13 @@ nonisolated private final class SynthVoice: @unchecked Sendable
 		return (tone + rattle + whine + hum) * gain
 	}
 
-	private func setBodyFilters(load: Float)
+	private func setBodyFilters(load: Float, pitch: Float)
 	{
-		bodyLow.setBandPass(frequency: Constants.bodyLowHz + Constants.bodyLowRiseHz * load,
+		bodyLow.setBandPass(frequency: (Constants.bodyLowHz + Constants.bodyLowRiseHz * load) * pitch,
 							q: Constants.bodyLowQ, sampleRate: sampleRate)
-		bodyMid.setBandPass(frequency: Constants.bodyMidHz + Constants.bodyMidRiseHz * load,
+		bodyMid.setBandPass(frequency: (Constants.bodyMidHz + Constants.bodyMidRiseHz * load) * pitch,
 							q: Constants.bodyMidQ, sampleRate: sampleRate)
-		bodyHigh.setBandPass(frequency: Constants.bodyHighHz + Constants.bodyHighRiseHz * load,
+		bodyHigh.setBandPass(frequency: (Constants.bodyHighHz + Constants.bodyHighRiseHz * load) * pitch,
 							 q: Constants.bodyHighQ, sampleRate: sampleRate)
 	}
 
@@ -959,6 +966,7 @@ final class SynthesisedSoundEngine: SoundEngine
 	func update(_ state: SoundState)
 	{
 		voice.load.store(EngineLoad.fraction(state), ordering: .relaxed)
+		voice.pitch.store(Float(state.pitch), ordering: .relaxed)
 		voice.coasting.store(EngineLoad.coasting(state), ordering: .relaxed)
 		voice.throttle.store(Float(state.throttle), ordering: .relaxed)
 		voice.isReversing.store(state.isReversing, ordering: .relaxed)

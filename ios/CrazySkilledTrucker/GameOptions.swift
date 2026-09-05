@@ -58,6 +58,21 @@ struct GameOptions
 		set { store.set(newValue, forKey: Constants.particlesEnabledKey) }
 	}
 
+	/// Multiplies every engine frequency in both sound engines. 1 is the model as
+	/// rendered; less is a bigger, slower engine. A dial while the sound is being found.
+	static var enginePitch: Double
+	{
+		get
+		{
+			let stored = double(forKey: Constants.enginePitchKey, fallback: Constants.defaultEnginePitch)
+			return clamped(stored, lowestEnginePitch, highestEnginePitch)
+		}
+		set { store.set(newValue, forKey: Constants.enginePitchKey) }
+	}
+
+	static let lowestEnginePitch = 0.5
+	static let highestEnginePitch = 1.2
+
 	/// How big the player's steered wheels are drawn, as a multiple of the baked tyre.
 	/// A dial while the look is being found.
 	static var steeredWheelScale: Double
@@ -127,6 +142,9 @@ struct GameOptions
 		static let lotEdgeKey = "lotEdge"
 		static let lotAcrossScreenKey = "lotAcrossScreen"
 		static let steeredWheelScaleKey = "steeredWheelScale"
+		static let enginePitchKey = "enginePitch"
+		/// The rendered model read as a bit high on the first listen.
+		static let defaultEnginePitch = 0.8
 		/// The baked tyre read as tiny on the player's cab. Found by play.
 		static let defaultSteeredWheelScale = 1.8
 	}

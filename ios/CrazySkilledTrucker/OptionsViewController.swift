@@ -32,6 +32,8 @@ final class OptionsViewController: UIViewController
 	private let lotAcrossSwitch = UISwitch()
 	private let wheelSlider = UISlider()
 	private let wheelCaption = UILabel()
+	private let pitchSlider = UISlider()
+	private let pitchCaption = UILabel()
 
 	private enum Constants
 	{
@@ -43,6 +45,7 @@ final class OptionsViewController: UIViewController
 		static let captionSpacing: CGFloat = 8
 		static let captionFontSize: CGFloat = 13
 		static let sliderStep: Float = 0.1
+		static let fineSliderStep: Float = 0.05
 	}
 
 	// MARK: - Lifecycle
@@ -72,8 +75,11 @@ final class OptionsViewController: UIViewController
 		wheelSlider.minimumValue = Float(GameOptions.lowestSteeredWheelScale)
 		wheelSlider.maximumValue = Float(GameOptions.highestSteeredWheelScale)
 		wheelSlider.value = Float(GameOptions.steeredWheelScale)
+		pitchSlider.minimumValue = Float(GameOptions.lowestEnginePitch)
+		pitchSlider.maximumValue = Float(GameOptions.highestEnginePitch)
+		pitchSlider.value = Float(GameOptions.enginePitch)
 
-		for caption in [forwardCaption, reverseCaption, wheelCaption]
+		for caption in [forwardCaption, reverseCaption, wheelCaption, pitchCaption]
 		{
 			caption.font = .monospacedDigitSystemFont(ofSize: Constants.captionFontSize, weight: .regular)
 			caption.textColor = .secondaryLabel
@@ -90,6 +96,7 @@ final class OptionsViewController: UIViewController
 		lotEdgeControl.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
 		lotAcrossSwitch.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
 		wheelSlider.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
+		pitchSlider.addTarget(self, action: #selector(controlChanged), for: .valueChanged)
 
 		let stack = UIStackView(arrangedSubviews: [
 			titled("Handling preset", presetControl),
@@ -101,7 +108,8 @@ final class OptionsViewController: UIViewController
 			row("Lot across the screen (lane left to right)", lotAcrossSwitch),
 			titled("Steered wheel size", wheelSlider, caption: wheelCaption),
 			row("Particle effects", particlesSwitch),
-			titled("Sound engine", soundControl)
+			titled("Sound engine", soundControl),
+			titled("Engine pitch", pitchSlider, caption: pitchCaption)
 		])
 		stack.axis = .vertical
 		stack.spacing = Constants.rowSpacing
@@ -146,6 +154,7 @@ final class OptionsViewController: UIViewController
 		forwardSlider.value = (forwardSlider.value / Constants.sliderStep).rounded() * Constants.sliderStep
 		reverseSlider.value = (reverseSlider.value / Constants.sliderStep).rounded() * Constants.sliderStep
 		wheelSlider.value = (wheelSlider.value / Constants.sliderStep).rounded() * Constants.sliderStep
+		pitchSlider.value = (pitchSlider.value / Constants.fineSliderStep).rounded() * Constants.fineSliderStep
 		GameOptions.presetIndex = presetControl.selectedSegmentIndex
 		GameOptions.forwardFactor = Double(forwardSlider.value)
 		GameOptions.reverseFactor = Double(reverseSlider.value)
@@ -156,6 +165,7 @@ final class OptionsViewController: UIViewController
 		GameOptions.lotEdge = LotEdge(rawValue: lotEdgeControl.selectedSegmentIndex) ?? .open
 		GameOptions.lotAcrossScreen = lotAcrossSwitch.isOn
 		GameOptions.steeredWheelScale = Double(wheelSlider.value)
+		GameOptions.enginePitch = Double(pitchSlider.value)
 		refreshCaptions()
 	}
 
@@ -172,6 +182,8 @@ final class OptionsViewController: UIViewController
 									 world.reverseKilometresPerHour, world.tuning.reverseFactor, foldText)
 		wheelCaption.text = String(format: "%.1f× the baked tyre. The pair stays inside the cab's box at any size.",
 								   GameOptions.steeredWheelScale)
+		pitchCaption.text = String(format: "%.2f× the rendered engine. Lower is a bigger, slower diesel. Applies live, to both engines.",
+								   GameOptions.enginePitch)
 	}
 
 	private func titled(_ title: String, _ control: UIView, caption: UILabel? = nil) -> UIStackView
